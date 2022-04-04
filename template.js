@@ -19,10 +19,10 @@ if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
 
 Firestore.read(data.firebasePath, firebaseOptions)
     .then((result) => {
-        return sendTrackRequest(result.data.access_token, result.data.refresh_token);
+        return sendStoreRequest(result.data.access_token, result.data.refresh_token);
     }, () => updateAccessToken(data.refreshToken));
 
-function sendTrackRequest(accessToken, refreshToken) {
+function sendStoreRequest(accessToken, refreshToken) {
     const postUrl = getUrl();
 
     if (isLoggingEnabled) {
@@ -84,7 +84,6 @@ function updateAccessToken(refreshToken) {
                 'EventName': 'Auth',
                 'ResponseStatusCode': statusCode,
                 'ResponseHeaders': headers,
-                'ResponseBody': body,
             }));
         }
 
@@ -93,7 +92,7 @@ function updateAccessToken(refreshToken) {
 
             Firestore.write(data.firebasePath, bodyParsed, firebaseOptions)
                 .then((id) => {
-                    sendTrackRequest(bodyParsed.access_token, bodyParsed.refresh_token);
+                    sendStoreRequest(bodyParsed.access_token, bodyParsed.refresh_token);
                 }, data.gtmOnFailure);
         } else {
             data.gtmOnFailure();
