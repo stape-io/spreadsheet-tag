@@ -68,7 +68,30 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "NON_EMPTY"
       }
-    ]
+    ],
+    "valueHint": "https://docs.google.com/spreadsheets/d/111112222222233333333qqqqqqqq/edit?"
+  },
+  {
+    "type": "GROUP",
+    "name": "authGroup",
+    "displayName": "Authentication Credentials",
+    "groupStyle": "ZIPPY_OPEN",
+    "subParams": [
+      {
+        "type": "RADIO",
+        "name": "authFlow",
+        "displayName": "Auth Type",
+        "radioItems": [
+          {
+            "value": "stape",
+            "displayValue": "Stape Google Connection"
+          },
+          {
+            "value": "own",
+            "displayValue": "Own Google credentials"
+          }
+        ],
+        "simpleValueType": true
   },
   {
     "type": "TEXT",
@@ -80,6 +103,13 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "NON_EMPTY"
       }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "authFlow",
+            "paramValue": "own",
+            "type": "EQUALS"
+          }
     ]
   },
   {
@@ -91,6 +121,13 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "NON_EMPTY"
       }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "authFlow",
+            "paramValue": "own",
+            "type": "EQUALS"
+          }
     ]
   },
   {
@@ -101,6 +138,34 @@ ___TEMPLATE_PARAMETERS___
     "valueValidators": [
       {
         "type": "NON_EMPTY"
+          }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "authFlow",
+            "paramValue": "own",
+            "type": "EQUALS"
+          }
+        ]
+      },
+      {
+        "type": "TEXT",
+        "name": "containerKey",
+        "displayName": "Stape Container API key",
+        "simpleValueType": true,
+        "valueValidators": [
+          {
+            "type": "NON_EMPTY"
+          }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "authFlow",
+            "paramValue": "stape",
+            "type": "EQUALS"
+          }
+        ],
+        "help": "It can be found in the detailed view of the container inside your \u003ca href\u003d\"https://app.stape.io/container/\" target\u003d\"_blank\"\u003eStape account\u003c/a\u003e."
       }
     ]
   },
@@ -150,6 +215,13 @@ ___TEMPLATE_PARAMETERS___
         ],
         "defaultValue": "stape/spreadsheet-auth"
       }
+    ],
+    "enablingConditions": [
+      {
+        "paramName": "authFlow",
+        "paramValue": "own",
+        "type": "EQUALS"
+      }
     ]
   },
   {
@@ -198,8 +270,55 @@ const isDebug = containerVersion.debugMode;
 const isLoggingEnabled = determinateIsLoggingEnabled();
 const traceId = getRequestHeader('trace-id');
 
-const method = data.type === 'add' ? 'POST' : 'PUT';
+const spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+let method = data.type === 'add' ? 'POST' : 'PUT';
 const postBody = getData();
+
+const postUrl = getUrl();
+
+
+
+if (data.authFlow === 'stape') {
+    method = 'POST';
+    return sendStapeApiReqeust();
+}
+
+function sendStapeApiReqeust() {
+    
+    if (isLoggingEnabled) {
+        logToConsole(JSON.stringify({
+            'Name': 'Spreadsheet',
+            'Type': 'Request',
+            'TraceId': traceId,
+            'EventName': data.type,
+            'RequestMethod': method,
+            'RequestUrl': postUrl,
+            'RequestBody': postBody,
+        }));
+    }
+
+
+    sendHttpRequest(postUrl, (statusCode, headers, postBody) => {
+        if (isLoggingEnabled) {
+            logToConsole(JSON.stringify({
+                'Name': 'Spreadsheet',
+                'Type': 'Response',
+                'TraceId': traceId,
+                'EventName': data.type,
+                'ResponseStatusCode': statusCode,
+                'ResponseHeaders': headers,
+                'ResponseBody': postBody,
+                'method': method,
+            }));
+        }
+
+        if (statusCode >= 200 && statusCode < 400) {
+            data.gtmOnSuccess();
+        } else {
+            data.gtmOnFailure();
+        }
+    }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
+}
 
 let firebaseOptions = {};
 if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
@@ -210,7 +329,6 @@ Firestore.read(data.firebasePath, firebaseOptions)
     }, () => updateAccessToken(data.refreshToken));
 
 function sendStoreRequest(accessToken, refreshToken) {
-    const postUrl = getUrl();
 
     if (isLoggingEnabled) {
         logToConsole(JSON.stringify({
@@ -288,7 +406,25 @@ function updateAccessToken(refreshToken) {
 }
 
 function getUrl() {
-    let spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+    if (data.authFlow == 'stape'){
+        const containerKey = data.containerKey.split(':');
+        const containerZone = containerKey[0];
+        const containerIdentifier = containerKey[1];
+        const containerApiKey = containerKey[2];
+        const containerDefaultDomainEnd = containerKey[3] || 'io';
+      
+        return (
+          'https://' +
+          enc(containerIdentifier) +
+          '.' +
+          enc(containerZone) +
+          '.stape.' +
+          enc(containerDefaultDomainEnd) +
+          '/stape-api/' +
+          enc(containerApiKey) +    
+          '/v1/spreadsheet/auth-proxy');
+    }
+    
 
     if (data.type === 'add') {
         return 'https://content-sheets.googleapis.com/v4/spreadsheets/'+spreadsheetId+'/values/'+enc(data.rows)+':append?includeValuesInResponse=true&valueInputOption=RAW&alt=json';
@@ -304,6 +440,14 @@ function getData() {
         data.dataList.forEach(d => {
             mappedData.push(d.value);
         });
+    }
+    if (data.authFlow == 'stape'){
+        return {
+            'spreadsheetId': spreadsheetId,
+            "range": enc(data.rows),
+            "type": data.type === 'add' ? 'add' : 'edit',
+            "values":  [mappedData]
+        };
     }
 
     return {
@@ -362,6 +506,14 @@ ___SERVER_PERMISSIONS___
               {
                 "type": 1,
                 "string": "https://content-sheets.googleapis.com/"
+              },
+              {
+                "type": 1,
+                "string": "https://*.stape.io/*"
+              },
+              {
+                "type": 1,
+                "string": "https://*.stape.net/*"
               }
             ]
           }
