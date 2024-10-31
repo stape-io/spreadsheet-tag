@@ -4,7 +4,7 @@ const getContainerVersion = require('getContainerVersion');
 const logToConsole = require('logToConsole');
 const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
-const Firestore = require('Firestore');
+const getGoogleAuth = require('getGoogleAuth');
 
 const containerVersion = getContainerVersion();
 const isDebug = containerVersion.debugMode;
@@ -22,6 +22,8 @@ const postUrl = getUrl();
 if (data.authFlow === 'stape') {
     method = 'POST';
     return sendStapeApiReqeust();
+} else {
+  return sendStoreRequest();
 }
 
 function sendStapeApiReqeust() {
@@ -61,16 +63,10 @@ function sendStapeApiReqeust() {
     }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
 }
 
-let firebaseOptions = {};
-if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
-
-Firestore.read(data.firebasePath, firebaseOptions)
-    .then((result) => {
-        return sendStoreRequest(result.data.access_token, result.data.refresh_token);
-    }, () => updateAccessToken(data.refreshToken));
-
-function sendStoreRequest(accessToken, refreshToken) {
-
+function sendStoreRequest() {
+    let auth = getGoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
     if (isLoggingEnabled) {
         logToConsole(JSON.stringify({
             'Name': 'Spreadsheet',
@@ -83,7 +79,7 @@ function sendStoreRequest(accessToken, refreshToken) {
         }));
     }
 
-    sendHttpRequest(postUrl, (statusCode, headers, body) => {
+    sendHttpRequest(postUrl, {headers: {'Content-Type': 'application/json'}, authorization: auth, method: method}, JSON.stringify(postBody)).then((statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -98,53 +94,12 @@ function sendStoreRequest(accessToken, refreshToken) {
 
         if (statusCode >= 200 && statusCode < 400) {
             data.gtmOnSuccess();
-        } else if (statusCode === 401) {
-            updateAccessToken(refreshToken);
         } else {
             data.gtmOnFailure();
         }
-    }, {headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, method: method}, JSON.stringify(postBody));
+    });
 }
 
-function updateAccessToken(refreshToken) {
-    const authUrl = 'https://oauth2.googleapis.com/token';
-    const authBody = 'refresh_token='+enc(refreshToken || data.refreshToken)+'&client_id='+enc(data.clientId)+'&client_secret='+enc(data.clientSecret)+'&grant_type=refresh_token';
-
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': 'Auth',
-            'RequestMethod': 'POST',
-            'RequestUrl': authUrl,
-        }));
-    }
-
-    sendHttpRequest(authUrl, (statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': 'Auth',
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            let bodyParsed = JSON.parse(body);
-
-            Firestore.write(data.firebasePath, bodyParsed, firebaseOptions)
-                .then((id) => {
-                    sendStoreRequest(bodyParsed.access_token, bodyParsed.refresh_token);
-                }, data.gtmOnFailure);
-        } else {
-            data.gtmOnFailure();
-        }
-    }, {headers: {'Content-Type': 'application/x-www-form-urlencoded'}, method: 'POST'}, authBody);
-}
 
 function getUrl() {
     if (data.authFlow == 'stape'){

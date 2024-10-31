@@ -84,69 +84,16 @@ ___TEMPLATE_PARAMETERS___
         "radioItems": [
           {
             "value": "stape",
-            "displayValue": "Stape Google Connection"
+            "displayValue": "Stape Google Connection",
+            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://app.stape.dev/container/qvjtjfbn/connections\"\u003ehere\u003c/a\u003e"
           },
           {
             "value": "own",
-            "displayValue": "Own Google credentials"
+            "displayValue": "Own Google credentials",
+            "help": "Uses Application Default Credentials to automatically find credentials from the server environment. \u003ca href\u003d\"https://cloud.google.com/docs/authentication/application-default-credentials\"\u003ehttps://cloud.google.com/docs/authentication/application-default-credentials\u003c/a\u003e"
           }
         ],
         "simpleValueType": true
-  },
-  {
-    "type": "TEXT",
-    "name": "refreshToken",
-    "displayName": "API Refresh Token",
-    "simpleValueType": true,
-    "help": "More info on how to get Authentication credentials \u003ca target\u003d\"_blank\" href\u003d\"https://developers.google.com/identity/protocols/oauth2/web-server\"\u003ecan be found by this link\u003c/a\u003e.",
-    "valueValidators": [
-      {
-        "type": "NON_EMPTY"
-      }
-        ],
-        "enablingConditions": [
-          {
-            "paramName": "authFlow",
-            "paramValue": "own",
-            "type": "EQUALS"
-          }
-    ]
-  },
-  {
-    "type": "TEXT",
-    "name": "clientId",
-    "displayName": "Client ID",
-    "simpleValueType": true,
-    "valueValidators": [
-      {
-        "type": "NON_EMPTY"
-      }
-        ],
-        "enablingConditions": [
-          {
-            "paramName": "authFlow",
-            "paramValue": "own",
-            "type": "EQUALS"
-          }
-    ]
-  },
-  {
-    "type": "TEXT",
-    "name": "clientSecret",
-    "displayName": "Client Secret",
-    "simpleValueType": true,
-    "valueValidators": [
-      {
-        "type": "NON_EMPTY"
-          }
-        ],
-        "enablingConditions": [
-          {
-            "paramName": "authFlow",
-            "paramValue": "own",
-            "type": "EQUALS"
-          }
-        ]
       },
       {
         "type": "TEXT",
@@ -191,40 +138,6 @@ ___TEMPLATE_PARAMETERS___
     ]
   },
   {
-    "displayName": "Firebase Settings",
-    "name": "firebaseGroup",
-    "groupStyle": "ZIPPY_CLOSED",
-    "type": "GROUP",
-    "subParams": [
-      {
-        "type": "TEXT",
-        "name": "firebaseProjectId",
-        "displayName": "Firebase Project ID",
-        "simpleValueType": true
-      },
-      {
-        "type": "TEXT",
-        "name": "firebasePath",
-        "displayName": "Firebase Path",
-        "simpleValueType": true,
-        "help": "The tag uses Firebase to store the OAuth access token. You can choose any key for a document that will store the OAuth access token.",
-        "valueValidators": [
-          {
-            "type": "NON_EMPTY"
-          }
-        ],
-        "defaultValue": "stape/spreadsheet-auth"
-      }
-    ],
-    "enablingConditions": [
-      {
-        "paramName": "authFlow",
-        "paramValue": "own",
-        "type": "EQUALS"
-      }
-    ]
-  },
-  {
     "displayName": "Logs Settings",
     "name": "logsGroup",
     "groupStyle": "ZIPPY_CLOSED",
@@ -263,7 +176,7 @@ const getContainerVersion = require('getContainerVersion');
 const logToConsole = require('logToConsole');
 const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
-const Firestore = require('Firestore');
+const getGoogleAuth = require('getGoogleAuth');
 
 const containerVersion = getContainerVersion();
 const isDebug = containerVersion.debugMode;
@@ -281,6 +194,8 @@ const postUrl = getUrl();
 if (data.authFlow === 'stape') {
     method = 'POST';
     return sendStapeApiReqeust();
+} else {
+  return sendStoreRequest();
 }
 
 function sendStapeApiReqeust() {
@@ -320,16 +235,10 @@ function sendStapeApiReqeust() {
     }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
 }
 
-let firebaseOptions = {};
-if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
-
-Firestore.read(data.firebasePath, firebaseOptions)
-    .then((result) => {
-        return sendStoreRequest(result.data.access_token, result.data.refresh_token);
-    }, () => updateAccessToken(data.refreshToken));
-
-function sendStoreRequest(accessToken, refreshToken) {
-
+function sendStoreRequest() {
+    let auth = getGoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
     if (isLoggingEnabled) {
         logToConsole(JSON.stringify({
             'Name': 'Spreadsheet',
@@ -342,7 +251,7 @@ function sendStoreRequest(accessToken, refreshToken) {
         }));
     }
 
-    sendHttpRequest(postUrl, (statusCode, headers, body) => {
+    sendHttpRequest(postUrl, {headers: {'Content-Type': 'application/json'}, authorization: auth, method: method}, JSON.stringify(postBody)).then((statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -357,53 +266,12 @@ function sendStoreRequest(accessToken, refreshToken) {
 
         if (statusCode >= 200 && statusCode < 400) {
             data.gtmOnSuccess();
-        } else if (statusCode === 401) {
-            updateAccessToken(refreshToken);
         } else {
             data.gtmOnFailure();
         }
-    }, {headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, method: method}, JSON.stringify(postBody));
+    });
 }
 
-function updateAccessToken(refreshToken) {
-    const authUrl = 'https://oauth2.googleapis.com/token';
-    const authBody = 'refresh_token='+enc(refreshToken || data.refreshToken)+'&client_id='+enc(data.clientId)+'&client_secret='+enc(data.clientSecret)+'&grant_type=refresh_token';
-
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': 'Auth',
-            'RequestMethod': 'POST',
-            'RequestUrl': authUrl,
-        }));
-    }
-
-    sendHttpRequest(authUrl, (statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': 'Auth',
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            let bodyParsed = JSON.parse(body);
-
-            Firestore.write(data.firebasePath, bodyParsed, firebaseOptions)
-                .then((id) => {
-                    sendStoreRequest(bodyParsed.access_token, bodyParsed.refresh_token);
-                }, data.gtmOnFailure);
-        } else {
-            data.gtmOnFailure();
-        }
-    }, {headers: {'Content-Type': 'application/x-www-form-urlencoded'}, method: 'POST'}, authBody);
-}
 
 function getUrl() {
     if (data.authFlow == 'stape'){
@@ -624,45 +492,18 @@ ___SERVER_PERMISSIONS___
   {
     "instance": {
       "key": {
-        "publicId": "access_firestore",
+        "publicId": "use_google_credentials",
         "versionId": "1"
       },
       "param": [
         {
-          "key": "allowedOptions",
+          "key": "allowedScopes",
           "value": {
             "type": 2,
             "listItem": [
-              {
-                "type": 3,
-                "mapKey": [
                   {
                     "type": 1,
-                    "string": "projectId"
-                  },
-                  {
-                    "type": 1,
-                    "string": "path"
-                  },
-                  {
-                    "type": 1,
-                    "string": "operation"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "*"
-                  },
-                  {
-                    "type": 1,
-                    "string": "*"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read_write"
-                  }
-                ]
+                "string": "https://www.googleapis.com/auth/spreadsheets"
               }
             ]
           }
