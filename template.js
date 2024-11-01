@@ -41,7 +41,7 @@ function sendStapeApiReqeust() {
     }
 
 
-    sendHttpRequest(postUrl, (statusCode, headers, postBody) => {
+    sendHttpRequest(postUrl, (statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -50,7 +50,7 @@ function sendStapeApiReqeust() {
                 'EventName': data.type,
                 'ResponseStatusCode': statusCode,
                 'ResponseHeaders': headers,
-                'ResponseBody': postBody,
+                'ResponseBody': body,
                 'method': method,
             }));
         }

@@ -85,7 +85,7 @@ ___TEMPLATE_PARAMETERS___
           {
             "value": "stape",
             "displayValue": "Stape Google Connection",
-            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://app.stape.dev/container/qvjtjfbn/connections\"\u003ehere\u003c/a\u003e"
+            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://app.stape.io/container/\"\u003ehere\u003c/a\u003e"
           },
           {
             "value": "own",
@@ -213,7 +213,7 @@ function sendStapeApiReqeust() {
     }
 
 
-    sendHttpRequest(postUrl, (statusCode, headers, postBody) => {
+    sendHttpRequest(postUrl, (statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -222,7 +222,7 @@ function sendStapeApiReqeust() {
                 'EventName': data.type,
                 'ResponseStatusCode': statusCode,
                 'ResponseHeaders': headers,
-                'ResponseBody': postBody,
+                'ResponseBody': body,
                 'method': method,
             }));
         }
