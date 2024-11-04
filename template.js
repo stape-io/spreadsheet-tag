@@ -4,27 +4,30 @@ const getContainerVersion = require('getContainerVersion');
 const logToConsole = require('logToConsole');
 const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
-const Firestore = require('Firestore');
+const getGoogleAuth = require('getGoogleAuth');
 
 const containerVersion = getContainerVersion();
 const isDebug = containerVersion.debugMode;
 const isLoggingEnabled = determinateIsLoggingEnabled();
 const traceId = getRequestHeader('trace-id');
 
-const method = data.type === 'add' ? 'POST' : 'PUT';
+const spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+let method = data.type === 'add' ? 'POST' : 'PUT';
 const postBody = getData();
 
-let firebaseOptions = {};
-if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
+const postUrl = getUrl();
 
-Firestore.read(data.firebasePath, firebaseOptions)
-    .then((result) => {
-        return sendStoreRequest(result.data.access_token, result.data.refresh_token);
-    }, () => updateAccessToken(data.refreshToken));
 
-function sendStoreRequest(accessToken, refreshToken) {
-    const postUrl = getUrl();
 
+if (data.authFlow === 'stape') {
+    method = 'POST';
+    return sendStapeApiReqeust();
+} else {
+  return sendStoreRequest();
+}
+
+function sendStapeApiReqeust() {
+    
     if (isLoggingEnabled) {
         logToConsole(JSON.stringify({
             'Name': 'Spreadsheet',
@@ -37,7 +40,46 @@ function sendStoreRequest(accessToken, refreshToken) {
         }));
     }
 
+
     sendHttpRequest(postUrl, (statusCode, headers, body) => {
+        if (isLoggingEnabled) {
+            logToConsole(JSON.stringify({
+                'Name': 'Spreadsheet',
+                'Type': 'Response',
+                'TraceId': traceId,
+                'EventName': data.type,
+                'ResponseStatusCode': statusCode,
+                'ResponseHeaders': headers,
+                'ResponseBody': body,
+                'method': method,
+            }));
+        }
+
+        if (statusCode >= 200 && statusCode < 400) {
+            data.gtmOnSuccess();
+        } else {
+            data.gtmOnFailure();
+        }
+    }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
+}
+
+function sendStoreRequest() {
+    let auth = getGoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+    if (isLoggingEnabled) {
+        logToConsole(JSON.stringify({
+            'Name': 'Spreadsheet',
+            'Type': 'Request',
+            'TraceId': traceId,
+            'EventName': data.type,
+            'RequestMethod': method,
+            'RequestUrl': postUrl,
+            'RequestBody': postBody,
+        }));
+    }
+
+    sendHttpRequest(postUrl, {headers: {'Content-Type': 'application/json'}, authorization: auth, method: method}, JSON.stringify(postBody)).then((statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -52,56 +94,33 @@ function sendStoreRequest(accessToken, refreshToken) {
 
         if (statusCode >= 200 && statusCode < 400) {
             data.gtmOnSuccess();
-        } else if (statusCode === 401) {
-            updateAccessToken(refreshToken);
         } else {
             data.gtmOnFailure();
         }
-    }, {headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, method: method}, JSON.stringify(postBody));
+    });
 }
 
-function updateAccessToken(refreshToken) {
-    const authUrl = 'https://oauth2.googleapis.com/token';
-    const authBody = 'refresh_token='+enc(refreshToken || data.refreshToken)+'&client_id='+enc(data.clientId)+'&client_secret='+enc(data.clientSecret)+'&grant_type=refresh_token';
-
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': 'Auth',
-            'RequestMethod': 'POST',
-            'RequestUrl': authUrl,
-        }));
-    }
-
-    sendHttpRequest(authUrl, (statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': 'Auth',
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            let bodyParsed = JSON.parse(body);
-
-            Firestore.write(data.firebasePath, bodyParsed, firebaseOptions)
-                .then((id) => {
-                    sendStoreRequest(bodyParsed.access_token, bodyParsed.refresh_token);
-                }, data.gtmOnFailure);
-        } else {
-            data.gtmOnFailure();
-        }
-    }, {headers: {'Content-Type': 'application/x-www-form-urlencoded'}, method: 'POST'}, authBody);
-}
 
 function getUrl() {
-    let spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+    if (data.authFlow == 'stape'){
+        const containerKey = data.containerKey.split(':');
+        const containerZone = containerKey[0];
+        const containerIdentifier = containerKey[1];
+        const containerApiKey = containerKey[2];
+        const containerDefaultDomainEnd = containerKey[3] || 'io';
+      
+        return (
+          'https://' +
+          enc(containerIdentifier) +
+          '.' +
+          enc(containerZone) +
+          '.stape.' +
+          enc(containerDefaultDomainEnd) +
+          '/stape-api/' +
+          enc(containerApiKey) +    
+          '/v1/spreadsheet/auth-proxy');
+    }
+    
 
     if (data.type === 'add') {
         return 'https://content-sheets.googleapis.com/v4/spreadsheets/'+spreadsheetId+'/values/'+enc(data.rows)+':append?includeValuesInResponse=true&valueInputOption=RAW&alt=json';
@@ -118,7 +137,15 @@ function getData() {
             mappedData.push(d.value);
         });
     }
-
+    if (data.authFlow == 'stape'){
+        return {
+            'spreadsheetId': spreadsheetId,
+            "range": enc(data.rows),
+            "type": data.type === 'add' ? 'add' : 'edit',
+            "values":  [mappedData]
+        };
+    }
+    
     return {
         'values': [mappedData],
     };

@@ -1,5 +1,7 @@
 homepage: "https://stape.io/"
 versions:
+  - sha: d5eb06bbb54b4a59ea2fba8cfd2a77a1c180011b
+    changeNotes: Added Stape API, updated Google Auth.
   - sha: 75945e29bfd95c835b9b9b21fe9c5a2dce2a89eb
     changeNotes: Update to correct naming.
   - sha: 9d9a618004c3a8e3104217fab4845c3acb433f5a

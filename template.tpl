@@ -68,39 +68,51 @@ ___TEMPLATE_PARAMETERS___
       {
         "type": "NON_EMPTY"
       }
-    ]
+    ],
+    "valueHint": "https://docs.google.com/spreadsheets/d/111112222222233333333qqqqqqqq/edit?"
   },
   {
-    "type": "TEXT",
-    "name": "refreshToken",
-    "displayName": "API Refresh Token",
-    "simpleValueType": true,
-    "help": "More info on how to get Authentication credentials \u003ca target\u003d\"_blank\" href\u003d\"https://developers.google.com/identity/protocols/oauth2/web-server\"\u003ecan be found by this link\u003c/a\u003e.",
-    "valueValidators": [
+    "type": "GROUP",
+    "name": "authGroup",
+    "displayName": "Authentication Credentials",
+    "groupStyle": "ZIPPY_OPEN",
+    "subParams": [
       {
-        "type": "NON_EMPTY"
-      }
-    ]
-  },
-  {
-    "type": "TEXT",
-    "name": "clientId",
-    "displayName": "Client ID",
-    "simpleValueType": true,
-    "valueValidators": [
+        "type": "RADIO",
+        "name": "authFlow",
+        "displayName": "Auth Type",
+        "radioItems": [
+          {
+            "value": "stape",
+            "displayValue": "Stape Google Connection",
+            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://app.stape.io/container/\"\u003ehere\u003c/a\u003e"
+          },
+          {
+            "value": "own",
+            "displayValue": "Own Google credentials",
+            "help": "Uses Application Default Credentials to automatically find credentials from the server environment. \u003ca href\u003d\"https://cloud.google.com/docs/authentication/application-default-credentials\"\u003ehttps://cloud.google.com/docs/authentication/application-default-credentials\u003c/a\u003e"
+          }
+        ],
+        "simpleValueType": true
+      },
       {
-        "type": "NON_EMPTY"
-      }
-    ]
-  },
-  {
-    "type": "TEXT",
-    "name": "clientSecret",
-    "displayName": "Client Secret",
-    "simpleValueType": true,
-    "valueValidators": [
-      {
-        "type": "NON_EMPTY"
+        "type": "TEXT",
+        "name": "containerKey",
+        "displayName": "Stape Container API key",
+        "simpleValueType": true,
+        "valueValidators": [
+          {
+            "type": "NON_EMPTY"
+          }
+        ],
+        "enablingConditions": [
+          {
+            "paramName": "authFlow",
+            "paramValue": "stape",
+            "type": "EQUALS"
+          }
+        ],
+        "help": "It can be found in the detailed view of the container inside your \u003ca href\u003d\"https://app.stape.io/container/\" target\u003d\"_blank\"\u003eStape account\u003c/a\u003e."
       }
     ]
   },
@@ -122,33 +134,6 @@ ___TEMPLATE_PARAMETERS___
         ],
         "type": "SIMPLE_TABLE",
         "newRowButtonText": "Add property"
-      }
-    ]
-  },
-  {
-    "displayName": "Firebase Settings",
-    "name": "firebaseGroup",
-    "groupStyle": "ZIPPY_CLOSED",
-    "type": "GROUP",
-    "subParams": [
-      {
-        "type": "TEXT",
-        "name": "firebaseProjectId",
-        "displayName": "Firebase Project ID",
-        "simpleValueType": true
-      },
-      {
-        "type": "TEXT",
-        "name": "firebasePath",
-        "displayName": "Firebase Path",
-        "simpleValueType": true,
-        "help": "The tag uses Firebase to store the OAuth access token. You can choose any key for a document that will store the OAuth access token.",
-        "valueValidators": [
-          {
-            "type": "NON_EMPTY"
-          }
-        ],
-        "defaultValue": "stape/spreadsheet-auth"
       }
     ]
   },
@@ -191,27 +176,30 @@ const getContainerVersion = require('getContainerVersion');
 const logToConsole = require('logToConsole');
 const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
-const Firestore = require('Firestore');
+const getGoogleAuth = require('getGoogleAuth');
 
 const containerVersion = getContainerVersion();
 const isDebug = containerVersion.debugMode;
 const isLoggingEnabled = determinateIsLoggingEnabled();
 const traceId = getRequestHeader('trace-id');
 
-const method = data.type === 'add' ? 'POST' : 'PUT';
+const spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+let method = data.type === 'add' ? 'POST' : 'PUT';
 const postBody = getData();
 
-let firebaseOptions = {};
-if (data.firebaseProjectId) firebaseOptions.projectId = data.firebaseProjectId;
+const postUrl = getUrl();
 
-Firestore.read(data.firebasePath, firebaseOptions)
-    .then((result) => {
-        return sendStoreRequest(result.data.access_token, result.data.refresh_token);
-    }, () => updateAccessToken(data.refreshToken));
 
-function sendStoreRequest(accessToken, refreshToken) {
-    const postUrl = getUrl();
 
+if (data.authFlow === 'stape') {
+    method = 'POST';
+    return sendStapeApiReqeust();
+} else {
+  return sendStoreRequest();
+}
+
+function sendStapeApiReqeust() {
+    
     if (isLoggingEnabled) {
         logToConsole(JSON.stringify({
             'Name': 'Spreadsheet',
@@ -224,7 +212,46 @@ function sendStoreRequest(accessToken, refreshToken) {
         }));
     }
 
+
     sendHttpRequest(postUrl, (statusCode, headers, body) => {
+        if (isLoggingEnabled) {
+            logToConsole(JSON.stringify({
+                'Name': 'Spreadsheet',
+                'Type': 'Response',
+                'TraceId': traceId,
+                'EventName': data.type,
+                'ResponseStatusCode': statusCode,
+                'ResponseHeaders': headers,
+                'ResponseBody': body,
+                'method': method,
+            }));
+        }
+
+        if (statusCode >= 200 && statusCode < 400) {
+            data.gtmOnSuccess();
+        } else {
+            data.gtmOnFailure();
+        }
+    }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
+}
+
+function sendStoreRequest() {
+    let auth = getGoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets']
+    });
+    if (isLoggingEnabled) {
+        logToConsole(JSON.stringify({
+            'Name': 'Spreadsheet',
+            'Type': 'Request',
+            'TraceId': traceId,
+            'EventName': data.type,
+            'RequestMethod': method,
+            'RequestUrl': postUrl,
+            'RequestBody': postBody,
+        }));
+    }
+
+    sendHttpRequest(postUrl, {headers: {'Content-Type': 'application/json'}, authorization: auth, method: method}, JSON.stringify(postBody)).then((statusCode, headers, body) => {
         if (isLoggingEnabled) {
             logToConsole(JSON.stringify({
                 'Name': 'Spreadsheet',
@@ -239,56 +266,33 @@ function sendStoreRequest(accessToken, refreshToken) {
 
         if (statusCode >= 200 && statusCode < 400) {
             data.gtmOnSuccess();
-        } else if (statusCode === 401) {
-            updateAccessToken(refreshToken);
         } else {
             data.gtmOnFailure();
         }
-    }, {headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken}, method: method}, JSON.stringify(postBody));
+    });
 }
 
-function updateAccessToken(refreshToken) {
-    const authUrl = 'https://oauth2.googleapis.com/token';
-    const authBody = 'refresh_token='+enc(refreshToken || data.refreshToken)+'&client_id='+enc(data.clientId)+'&client_secret='+enc(data.clientSecret)+'&grant_type=refresh_token';
-
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': 'Auth',
-            'RequestMethod': 'POST',
-            'RequestUrl': authUrl,
-        }));
-    }
-
-    sendHttpRequest(authUrl, (statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': 'Auth',
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            let bodyParsed = JSON.parse(body);
-
-            Firestore.write(data.firebasePath, bodyParsed, firebaseOptions)
-                .then((id) => {
-                    sendStoreRequest(bodyParsed.access_token, bodyParsed.refresh_token);
-                }, data.gtmOnFailure);
-        } else {
-            data.gtmOnFailure();
-        }
-    }, {headers: {'Content-Type': 'application/x-www-form-urlencoded'}, method: 'POST'}, authBody);
-}
 
 function getUrl() {
-    let spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+    if (data.authFlow == 'stape'){
+        const containerKey = data.containerKey.split(':');
+        const containerZone = containerKey[0];
+        const containerIdentifier = containerKey[1];
+        const containerApiKey = containerKey[2];
+        const containerDefaultDomainEnd = containerKey[3] || 'io';
+      
+        return (
+          'https://' +
+          enc(containerIdentifier) +
+          '.' +
+          enc(containerZone) +
+          '.stape.' +
+          enc(containerDefaultDomainEnd) +
+          '/stape-api/' +
+          enc(containerApiKey) +    
+          '/v1/spreadsheet/auth-proxy');
+    }
+    
 
     if (data.type === 'add') {
         return 'https://content-sheets.googleapis.com/v4/spreadsheets/'+spreadsheetId+'/values/'+enc(data.rows)+':append?includeValuesInResponse=true&valueInputOption=RAW&alt=json';
@@ -304,6 +308,14 @@ function getData() {
         data.dataList.forEach(d => {
             mappedData.push(d.value);
         });
+    }
+    if (data.authFlow == 'stape'){
+        return {
+            'spreadsheetId': spreadsheetId,
+            "range": enc(data.rows),
+            "type": data.type === 'add' ? 'add' : 'edit',
+            "values":  [mappedData]
+        };
     }
 
     return {
@@ -362,6 +374,14 @@ ___SERVER_PERMISSIONS___
               {
                 "type": 1,
                 "string": "https://content-sheets.googleapis.com/"
+              },
+              {
+                "type": 1,
+                "string": "https://*.stape.io/*"
+              },
+              {
+                "type": 1,
+                "string": "https://*.stape.net/*"
               }
             ]
           }
@@ -472,45 +492,18 @@ ___SERVER_PERMISSIONS___
   {
     "instance": {
       "key": {
-        "publicId": "access_firestore",
+        "publicId": "use_google_credentials",
         "versionId": "1"
       },
       "param": [
         {
-          "key": "allowedOptions",
+          "key": "allowedScopes",
           "value": {
             "type": 2,
             "listItem": [
-              {
-                "type": 3,
-                "mapKey": [
                   {
                     "type": 1,
-                    "string": "projectId"
-                  },
-                  {
-                    "type": 1,
-                    "string": "path"
-                  },
-                  {
-                    "type": 1,
-                    "string": "operation"
-                  }
-                ],
-                "mapValue": [
-                  {
-                    "type": 1,
-                    "string": "*"
-                  },
-                  {
-                    "type": 1,
-                    "string": "*"
-                  },
-                  {
-                    "type": 1,
-                    "string": "read_write"
-                  }
-                ]
+                "string": "https://www.googleapis.com/auth/spreadsheets"
               }
             ]
           }
