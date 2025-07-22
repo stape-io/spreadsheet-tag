@@ -54,10 +54,24 @@ ___TEMPLATE_PARAMETERS___
   },
   {
     "type": "TEXT",
-    "name": "rows",
-    "displayName": "Rows range",
+    "name": "sheetName",
+    "displayName": "Sheet Name",
     "simpleValueType": true,
-    "defaultValue": "A1:Z1"
+    "help": "Enter the name of the Sheet you want to interact with.\u003cbr/\u003e\nIf none is specified, then it will interact with the first visible Sheet in the Spreadsheet.\n\u003cbr/\u003e\u003cbr/\u003e\nAlternatively, you can specify the Sheet Name in the \u003ci\u003eRows range\u003c/i\u003e field below using A1 Notation. \u003ca href\u003d\"https://developers.google.com/workspace/sheets/api/guides/concepts#cell\"\u003eLearn more\u003c/a\u003e.",
+    "valueHint": "Sheet2"
+  },
+  {
+    "type": "TEXT",
+    "name": "rows",
+    "displayName": "Rows Range",
+    "simpleValueType": true,
+    "defaultValue": "A1:Z1",
+    "help": "Specify the \u003ci\u003eRows Range\u003c/i\u003e using A1 Notation.\n\u003cbr/\u003e\u003cbr/\u003e\nYou can specify the Sheet Name in the \u003ci\u003eSheet Name\u003c/i\u003e field above (preferred), or here using A1 notation. \u003ca href\u003d\"https://developers.google.com/workspace/sheets/api/guides/concepts#cell\"\u003eLearn more\u003c/a\u003e.\n\u003cbr/\u003e\nIf none is specified, then it will interact with the first visible Sheet in the Spreadsheet.",
+    "valueValidators": [
+      {
+        "type": "NON_EMPTY"
+      }
+    ]
   },
   {
     "type": "TEXT",
@@ -70,6 +84,25 @@ ___TEMPLATE_PARAMETERS___
       }
     ],
     "valueHint": "https://docs.google.com/spreadsheets/d/111112222222233333333qqqqqqqq/edit?"
+  },
+  {
+    "type": "SELECT",
+    "name": "useOptimisticScenario",
+    "displayName": "Use Optimistic Scenario",
+    "macrosInSelect": true,
+    "selectItems": [
+      {
+        "value": true,
+        "displayValue": "true"
+      },
+      {
+        "value": false,
+        "displayValue": "false"
+      }
+    ],
+    "simpleValueType": true,
+    "help": "The tag will call gtmOnSuccess() without waiting for a response from the API. This will speed up sGTM response time however your tag will always return the status fired successfully even in case it is not.",
+    "defaultValue": false
   },
   {
     "type": "GROUP",
@@ -85,12 +118,12 @@ ___TEMPLATE_PARAMETERS___
           {
             "value": "stape",
             "displayValue": "Stape Google Connection",
-            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://app.stape.io/container/\"\u003ehere\u003c/a\u003e"
+            "help": "Learn how to setup Stape Google Sheet Connection \u003ca href\u003d\"https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#google-sheets-connection\"\u003ehere\u003c/a\u003e."
           },
           {
             "value": "own",
-            "displayValue": "Own Google credentials",
-            "help": "Uses Application Default Credentials to automatically find credentials from the server environment. \u003ca href\u003d\"https://cloud.google.com/docs/authentication/application-default-credentials\"\u003ehttps://cloud.google.com/docs/authentication/application-default-credentials\u003c/a\u003e"
+            "displayValue": "Own Google Credentials",
+            "help": "It uses the \u003ci\u003eApplication Default Credentials\u003c/i\u003e from GCP to automatically find credentials from the server environment. \u003ca href\u003d\"https://cloud.google.com/docs/authentication/application-default-credentials\"\u003eLearn more\u003c/a\u003e.\n\u003cbr/\u003e\u003cbr/\u003e\n\u003ca href\u003d\"https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#how-to-set-google-sheets-tag-up-for-non-stape-users\"\u003eLearn how to set it up\u003c/a\u003e."
           }
         ],
         "simpleValueType": true
@@ -114,7 +147,9 @@ ___TEMPLATE_PARAMETERS___
           }
         ],
         "type": "SIMPLE_TABLE",
-        "newRowButtonText": "Add property"
+        "newRowButtonText": "Add cell",
+        "help": "Each line here corresponds to a cell in the Sheet.",
+        "displayName": "Data"
       }
     ]
   },
@@ -159,165 +194,224 @@ const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
 const getGoogleAuth = require('getGoogleAuth');
 
-const containerVersion = getContainerVersion();
-const isDebug = containerVersion.debugMode;
-const isLoggingEnabled = determinateIsLoggingEnabled();
+/*==============================================================================
+==============================================================================*/
+
 const traceId = getRequestHeader('trace-id');
 
-const spreadsheetId = data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
+const useOptimisticScenario = isUIFieldTrue(data.useOptimisticScenario);
+
+const spreadsheetId = getSpreadsheetId(data);
+const sheetRange = getSheetRange(data);
 let method = data.type === 'add' ? 'POST' : 'PUT';
 const postBody = getData();
 const postUrl = getUrl();
 
-
-
 if (data.authFlow === 'stape') {
-    method = 'POST';
-    return sendStapeApiReqeust();
+  method = 'POST';
+  sendStapeApiRequest();
 } else {
-  return sendStoreRequest();
+  sendStoreRequest();
 }
 
-function sendStapeApiReqeust() {
-    
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': data.type,
-            'RequestMethod': method,
-            'RequestUrl': postUrl,
-            'RequestBody': postBody,
-        }));
-    }
-
-
-    sendHttpRequest(postUrl, (statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': data.type,
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-                'ResponseBody': body,
-                'method': method,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            data.gtmOnSuccess();
-        } else {
-            data.gtmOnFailure();
-        }
-    }, {headers: {'Content-Type': 'application/json'}, method: method}, JSON.stringify(postBody));
+if (useOptimisticScenario) {
+  return data.gtmOnSuccess();
 }
 
-function sendStoreRequest() {
-    let auth = getGoogleAuth({
-        scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
-    if (isLoggingEnabled) {
-        logToConsole(JSON.stringify({
-            'Name': 'Spreadsheet',
-            'Type': 'Request',
-            'TraceId': traceId,
-            'EventName': data.type,
-            'RequestMethod': method,
-            'RequestUrl': postUrl,
-            'RequestBody': postBody,
-        }));
-    }
+/*==============================================================================
+  Vendor related functions
+==============================================================================*/
 
-    sendHttpRequest(postUrl, {headers: {'Content-Type': 'application/json'}, authorization: auth, method: method}, JSON.stringify(postBody)).then((statusCode, headers, body) => {
-        if (isLoggingEnabled) {
-            logToConsole(JSON.stringify({
-                'Name': 'Spreadsheet',
-                'Type': 'Response',
-                'TraceId': traceId,
-                'EventName': data.type,
-                'ResponseStatusCode': statusCode,
-                'ResponseHeaders': headers,
-                'ResponseBody': body,
-            }));
-        }
-
-        if (statusCode >= 200 && statusCode < 400) {
-            data.gtmOnSuccess();
-        } else {
-            data.gtmOnFailure();
-        }
-    });
+function getSpreadsheetId(data) {
+  return data.url.replace('https://docs.google.com/spreadsheets/d/', '').split('/')[0];
 }
 
+function getSheetRange(data) {
+  const sheetName = data.sheetName ? "'" + data.sheetName + "'!" : '';
+  return sheetName + data.rows;
+}
 
 function getUrl() {
-    if (data.authFlow == 'stape'){
-        const containerIdentifier = getRequestHeader('x-gtm-identifier');
-        const defaultDomain = getRequestHeader('x-gtm-default-domain');
-        const containerApiKey = getRequestHeader('x-gtm-api-key');
-      
-        return (
-          'https://' +
-          enc(containerIdentifier) +
-          '.' +
-          enc(defaultDomain) +
-          '/stape-api/' +
-          enc(containerApiKey) +    
-          '/v1/spreadsheet/auth-proxy');
-    }
-    
+  if (data.authFlow == 'stape') {
+    const containerIdentifier = getRequestHeader('x-gtm-identifier');
+    const defaultDomain = getRequestHeader('x-gtm-default-domain');
+    const containerApiKey = getRequestHeader('x-gtm-api-key');
 
-    if (data.type === 'add') {
-        return 'https://content-sheets.googleapis.com/v4/spreadsheets/'+spreadsheetId+'/values/'+enc(data.rows)+':append?includeValuesInResponse=true&valueInputOption=RAW&alt=json';
-    }
+    return (
+      'https://' +
+      enc(containerIdentifier) +
+      '.' +
+      enc(defaultDomain) +
+      '/stape-api/' +
+      enc(containerApiKey) +
+      '/v1/spreadsheet/auth-proxy'
+    );
+  }
 
-    return 'https://content-sheets.googleapis.com/v4/spreadsheets/'+spreadsheetId+'/values/'+enc(data.rows)+'?valueInputOption=RAW&includeValuesInResponse=true&alt=json';
+  return (
+    'https://content-sheets.googleapis.com/v4/spreadsheets/' +
+    spreadsheetId +
+    '/values/' +
+    enc(sheetRange) +
+    (data.type === 'add' ? ':append' : '') +
+    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json'
+  );
 }
 
 function getData() {
-    let mappedData = [];
+  const mappedData = [];
 
-    if (data.dataList) {
-        data.dataList.forEach(d => {
-            mappedData.push(d.value);
-        });
-    }
-    if (data.authFlow == 'stape'){
-        return {
-            'spreadsheetId': spreadsheetId,
-            "range": enc(data.rows),
-            "type": data.type === 'add' ? 'add' : 'edit',
-            "values":  [mappedData]
-        };
-    }
+  if (data.dataList) {
+    data.dataList.forEach((d) => {
+      mappedData.push(d.value);
+    });
+  }
 
+  if (data.authFlow == 'stape') {
     return {
-        'values': [mappedData],
+      spreadsheetId: spreadsheetId,
+      range: enc(sheetRange),
+      type: data.type === 'add' ? 'add' : 'edit',
+      values: [mappedData]
     };
+  }
+
+  return {
+    values: [mappedData]
+  };
+}
+
+function sendStapeApiRequest() {
+  log({
+    Name: 'Spreadsheet',
+    Type: 'Request',
+    TraceId: traceId,
+    EventName: data.type,
+    RequestMethod: method,
+    RequestUrl: postUrl,
+    RequestBody: postBody
+  });
+
+  sendHttpRequest(
+    postUrl,
+    (statusCode, headers, body) => {
+      log({
+        Name: 'Spreadsheet',
+        Type: 'Response',
+        TraceId: traceId,
+        EventName: data.type,
+        ResponseStatusCode: statusCode,
+        ResponseHeaders: headers,
+        ResponseBody: body,
+        method: method
+      });
+
+      if (!useOptimisticScenario) {
+        if (statusCode >= 200 && statusCode < 400) {
+          data.gtmOnSuccess();
+        } else {
+          data.gtmOnFailure();
+        }
+      }
+    },
+    { headers: { 'Content-Type': 'application/json' }, method: method },
+    JSON.stringify(postBody)
+  );
+}
+
+function sendStoreRequest() {
+  log({
+    Name: 'Spreadsheet',
+    Type: 'Request',
+    TraceId: traceId,
+    EventName: data.type,
+    RequestMethod: method,
+    RequestUrl: postUrl,
+    RequestBody: postBody
+  });
+
+  const auth = getGoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+
+  sendHttpRequest(
+    postUrl,
+    { headers: { 'Content-Type': 'application/json' }, authorization: auth, method: method },
+    JSON.stringify(postBody)
+  )
+    .then((result) => {
+      log({
+        Name: 'Spreadsheet',
+        Type: 'Response',
+        TraceId: traceId,
+        EventName: data.type,
+        ResponseStatusCode: result.statusCode,
+        ResponseHeaders: result.headers,
+        ResponseBody: result.body
+      });
+
+      if (!useOptimisticScenario) {
+        if (result.statusCode >= 200 && result.statusCode < 400) {
+          data.gtmOnSuccess();
+        } else {
+          data.gtmOnFailure();
+        }
+      }
+    })
+    .catch((result) => {
+      log({
+        Name: 'Spreadsheet',
+        Type: 'Message',
+        TraceId: traceId,
+        EventName: data.type,
+        Message: 'The request failed or timed out.',
+        Reason: JSON.stringify(result)
+      });
+
+      if (!useOptimisticScenario) data.gtmOnFailure();
+    });
+}
+
+/*==============================================================================
+  Helpers
+==============================================================================*/
+
+function enc(data) {
+  return encodeUriComponent(data || '');
+}
+
+function isUIFieldTrue(field) {
+  return [true, 'true'].indexOf(field) !== -1;
+}
+
+function log(rawDataToLog) {
+  if (determinateIsLoggingEnabled()) logConsole(rawDataToLog);
+}
+
+function logConsole(dataToLog) {
+  logToConsole(JSON.stringify(dataToLog));
 }
 
 function determinateIsLoggingEnabled() {
-    if (!data.logType) {
-        return isDebug;
-    }
+  const containerVersion = getContainerVersion();
+  const isDebug = !!(
+    containerVersion &&
+    (containerVersion.debugMode || containerVersion.previewMode)
+  );
 
-    if (data.logType === 'no') {
-        return false;
-    }
+  if (!data.logType) {
+    return isDebug;
+  }
 
-    if (data.logType === 'debug') {
-        return isDebug;
-    }
+  if (data.logType === 'no') {
+    return false;
+  }
 
-    return data.logType === 'always';
-}
+  if (data.logType === 'debug') {
+    return isDebug;
+  }
 
-function enc(data) {
-    data = data || '';
-    return encodeUriComponent(data);
+  return data.logType === 'always';
 }
 
 
@@ -522,8 +616,8 @@ ___SERVER_PERMISSIONS___
           "value": {
             "type": 2,
             "listItem": [
-                  {
-                    "type": 1,
+              {
+                "type": 1,
                 "string": "https://www.googleapis.com/auth/spreadsheets"
               }
             ]
@@ -541,8 +635,214 @@ ___SERVER_PERMISSIONS___
 
 ___TESTS___
 
-scenarios: []
-setup: ''
+scenarios:
+- name: Sheet Range without Sheet Name is built successfully
+  code: |-
+    setMockDataByActionType('add');
+    Object.delete(mockData, 'sheetName');
+
+    const expectedSheetRange = mockData.rows;
+    mock('sendHttpRequest', (requestUrl, callback, requestOptions, requestBody) => {
+      const parsedBody = JSON.parse(requestBody);
+      assertThat(parsedBody.range).isEqualTo(expectedSheetRange);
+      callback(200);
+    });
+
+    runCode(mockData);
+
+    callLater(() => {
+      assertApi('gtmOnSuccess').wasCalled();
+      assertApi('gtmOnFailure').wasNotCalled();
+    });
+- name: Sheet Range with Sheet Name is built successfully
+  code: |-
+    setMockDataByActionType('add');
+
+    const expectedSheetRange = "'" + mockData.sheetName + "'!" + mockData.rows;
+    mock('sendHttpRequest', (requestUrl, callback, requestOptions, requestBody) => {
+      const parsedBody = JSON.parse(requestBody);
+      assertThat(parsedBody.range).isEqualTo(expectedSheetRange);
+      callback(200);
+    });
+
+    runCode(mockData);
+
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: '[Stape Google Connection] Add Row request is built and sent successfully'
+  code: "setMockDataByActionType('add');\n\nmock('sendHttpRequest', (requestUrl, callback,\
+    \ requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
+    \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, method: 'POST' });\n  \n  const parsedBody = JSON.parse(requestBody);\n \
+    \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+    \    range: \"'Sheet2'!D1\",\n    type: 'add',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
+    \ 'buuuuuuuuuuuuuu']]\n  });\n  \n  assertThat(callback).isFunction();\n  callback(200);\n\
+    });\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\nassertApi('gtmOnFailure').wasNotCalled();"
+- name: '[Stape Google Connection] Update Cells request is built and sent successfully'
+  code: "setMockDataByActionType('update');\n\nmock('sendHttpRequest', (requestUrl,\
+    \ callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
+    \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, method: 'POST' });\n  \n  const parsedBody = JSON.parse(requestBody);\n \
+    \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+    \    range: \"'Sheet2'!D1\",\n    type: 'edit',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
+    \ 'buuuuuuuuuuuuuu']]\n  });\n  \n  assertThat(callback).isFunction();\n  callback(200);\n\
+    });\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\nassertApi('gtmOnFailure').wasNotCalled();"
+- name: '[Stape Google Connection] gtmOnFailure is called if request fails (statusCode)'
+  code: |-
+    setMockDataByActionType('add');
+
+    mock('sendHttpRequest', (requestUrl, callback, requestOptions, requestBody) => {
+      callback(500);
+    });
+
+    runCode(mockData);
+
+    assertApi('gtmOnSuccess').wasNotCalled();
+    assertApi('gtmOnFailure').wasCalled();
+- name: '[Own Google Credentials] Add Row request is built and sent successfully'
+  code: "setMockDataByActionType('add', {\n  authFlow: 'own'\n});\n\nmock('sendHttpRequest',\
+    \ (requestUrl, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"\
+    https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json\"\
+    );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, authorization: 'mockedGoogleAuth', method: 'POST' });\n  \n  const parsedBody\
+    \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ values: [['wwwwwwwwww',\
+    \ 'rrrrrrrr', 'buuuuuuuuuuuuuu']] });\n  \n  return Promise.create((resolve, reject)\
+    \ => resolve({ statusCode: 200 }));\n});\n\nrunCode(mockData);\n\ncallLater(()\
+    \ => {\n  assertApi('getGoogleAuth').wasCalledWith({\n    scopes: ['https://www.googleapis.com/auth/spreadsheets']\n\
+    \  });\n  assertApi('gtmOnSuccess').wasCalled();\n  assertApi('gtmOnFailure').wasNotCalled();\n\
+    });"
+- name: '[Own Google Credentials] Update Cells request is built and sent successfully'
+  code: "setMockDataByActionType('update', {\n  authFlow: 'own'\n});\n\nmock('sendHttpRequest',\
+    \ (requestUrl, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"\
+    https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json\"\
+    );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, authorization: 'mockedGoogleAuth', method: 'PUT' });\n  \n  const parsedBody\
+    \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ values: [['wwwwwwwwww',\
+    \ 'rrrrrrrr', 'buuuuuuuuuuuuuu']] });\n  \n  return Promise.create((resolve, reject)\
+    \ => resolve({ statusCode: 200 }));\n});\n\nrunCode(mockData);\n\ncallLater(()\
+    \ => {\n  assertApi('getGoogleAuth').wasCalledWith({\n    scopes: ['https://www.googleapis.com/auth/spreadsheets']\n\
+    \  });\n  assertApi('gtmOnSuccess').wasCalled();\n  assertApi('gtmOnFailure').wasNotCalled();\n\
+    });"
+- name: '[Own Google Credentials] gtmOnFailure is called if request fails (statusCode)'
+  code: |-
+    setMockDataByActionType('add', {
+      authFlow: 'own'
+    });
+
+    mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+      return Promise.create((resolve, reject) => resolve({ statusCode: 500 }));
+    });
+
+    runCode(mockData);
+
+    callLater(() => {
+      assertApi('gtmOnSuccess').wasNotCalled();
+      assertApi('gtmOnFailure').wasCalled();
+    });
+- name: '[Own Google Credentials] gtmOnFailure is called if request fails (catch)'
+  code: |-
+    setMockDataByActionType('add', {
+      authFlow: 'own'
+    });
+
+    mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+      return Promise.create((resolve, reject) => reject({ reason: 'failed' }));
+    });
+
+    runCode(mockData);
+
+    callLater(() => {
+      assertApi('gtmOnSuccess').wasNotCalled();
+      assertApi('gtmOnFailure').wasCalled();
+    });
+- name: Should log to console, if the 'Always log to console' option is selected
+  code: |-
+    setMockDataByActionType('add');
+    mockData.logType = 'debug';
+
+    const expectedDebugMode = true;
+    mock('getContainerVersion', () => {
+      return {
+        debugMode: expectedDebugMode
+      };
+    });
+
+    mock('logToConsole', (logData) => {
+      const parsedLogData = JSON.parse(logData);
+      requiredConsoleKeys.forEach(p => assertThat(parsedLogData[p]).isDefined());
+    });
+
+    runCode(mockData);
+
+    assertApi('logToConsole').wasCalled();
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: Should log to console, if the 'Log during debug and preview' option is selected
+    AND is on preview mode
+  code: |-
+    setMockDataByActionType('add');
+    mockData.logType = 'debug';
+
+    const expectedDebugMode = true;
+    mock('getContainerVersion', () => {
+      return {
+        debugMode: expectedDebugMode
+      };
+    });
+
+    mock('logToConsole', (logData) => {
+      const parsedLogData = JSON.parse(logData);
+      requiredConsoleKeys.forEach(p => assertThat(parsedLogData[p]).isDefined());
+    });
+
+    runCode(mockData);
+
+
+    assertApi('logToConsole').wasCalled();
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+- name: Should NOT log to console, if the 'Log during debug and preview' option is
+    selected AND is NOT on preview mode
+  code: "setMockDataByActionType('add');\nmockData.logType = 'debug';\n\nconst expectedDebugMode\
+    \ = false;\nmock('getContainerVersion', () => {\n  return {\n    debugMode: expectedDebugMode\n\
+    \  };\n}); \n\nrunCode(mockData);\n\nassertApi('logToConsole').wasNotCalled();\n\
+    assertApi('gtmOnSuccess').wasCalled();\nassertApi('gtmOnFailure').wasNotCalled();"
+- name: Should NOT log to console, if the 'Do not log' option is selected
+  code: |-
+    setMockDataByActionType('add');
+    mockData.logType = 'no';
+
+    runCode(mockData);
+
+    assertApi('logToConsole').wasNotCalled();
+    assertApi('gtmOnSuccess').wasCalled();
+    assertApi('gtmOnFailure').wasNotCalled();
+setup: "const Promise = require('Promise');\nconst JSON = require('JSON');\nconst\
+  \ makeInteger = require('makeInteger');\nconst Object = require('Object');\nconst\
+  \ callLater = require('callLater');\n\nconst mergeObj = (target, source) => {\n\
+  \  for (const key in source) {\n    if (source.hasOwnProperty(key)) target[key]\
+  \ = source[key];\n  }\n  return target;\n};\n\nconst requiredConsoleKeys = ['Type',\
+  \ 'TraceId', 'Name'];\n\nconst mockData = {};\n\nconst setMockDataByActionType =\
+  \ (actionType, objToBeMerged) => {\n  const baseMockData = {\n    useOptimisticScenario:\
+  \ false,\n    logType: 'debug'\n  };\n  \n  const actionTypes = {\n    add: {\n\
+  \      type: 'add',\n      sheetName: 'Sheet2',\n      rows: 'D1',\n      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+  \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
+  \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
+  \    },\n    update: {\n      type: 'update',\n      sheetName: 'Sheet2',\n    \
+  \  rows: 'D1',\n      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+  \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
+  \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
+  \    }\n  };\n  \n  return mergeObj(\n    mockData, \n    mergeObj(\n      actionTypes[actionType],\
+  \ \n      mergeObj(baseMockData, objToBeMerged || {})\n    )\n  );\n};\n\n\nmock('sendHttpRequest',\
+  \ (requestUrl, callback, requestOptions, requestBody) => {\n  if (typeof callback\
+  \ === 'function') {\n    callback(200);\n  } else {\n    requestBody = requestOptions;\n\
+  \    requestOptions = callback;\n    return Promise.create((resolve, reject) =>\
+  \ {\n      resolve({ statusCode: 200 });\n    });  \n  }\n});\n\nmock('getRequestHeader',\
+  \ (header) => {\n  if (header === 'trace-id') return 'expectedTraceId';\n  else\
+  \ if (header === 'x-gtm-identifier') return 'expectedXGtmIdentifier';\n  else if\
+  \ (header === 'x-gtm-default-domain') return 'expectedXGtmDefaultDomain';\n  else\
+  \ if (header === 'x-gtm-api-key') return 'expectedXGtmApiKey';\n});\n\nmock('getGoogleAuth',\
+  \ () => {\n  return 'mockedGoogleAuth';\n});"
 
 
 ___NOTES___
