@@ -34,7 +34,7 @@ The tag supports two primary actions:
 ### Authentication Credentials
 - **Auth Type**:
     - **Stape Google Connection**: A simplified authentication method for Stape users. Requires enabling the **Google Sheets Connection** in your container settings. [Learn more](https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#google-sheets-connection).
-    - **Own Google Credentials**: Uses Application Default Credentials from a Google Cloud Platform environment. This requires enabling the Google Sheets API on GCP, setting up a service account and granting it access to your Google Sheet. [Learn more](https://cloud.google.com/docs/authentication/application-default-credentials).
+    - **Own Google Credentials**: Uses Application Default Credentials from a Google Cloud Platform environment. This requires enabling the Google Sheets API on GCP, setting up a service account and granting it access to your Google Sheet. [Learn more](https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#how-to-set-google-sheets-tag-up-for-non-stape-userstials).
 
 
 ### Data
@@ -44,7 +44,7 @@ The tag supports two primary actions:
 
 - [How to write data from server Google Tag Manager to Google Sheets](https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets)
 - [How to set up the Stape Google Connection](https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#google-sheets-connection)
-- [How to set up the Own Google Credentials](https://cloud.google.com/docs/authentication/application-default-credentials)
+- [How to set up the Own Google Credentials](https://stape.io/blog/write-data-from-server-google-tag-manager-to-google-sheets#how-to-set-google-sheets-tag-up-for-non-stape-users)
 
 ## Open Source
 
