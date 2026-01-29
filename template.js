@@ -5,6 +5,8 @@ const logToConsole = require('logToConsole');
 const getRequestHeader = require('getRequestHeader');
 const encodeUriComponent = require('encodeUriComponent');
 const getGoogleAuth = require('getGoogleAuth');
+const getType = require('getType');
+const makeString = require('makeString');
 
 /*==============================================================================
 ==============================================================================*/
@@ -40,7 +42,11 @@ function getSpreadsheetId(data) {
 
 function getSheetRange(data) {
   const sheetName = data.sheetName ? "'" + data.sheetName + "'!" : '';
-  return sheetName + data.rows;
+  const sheetDimension =
+    data.appendMajorDimension === 'ROWS' || data.updateMajorDimension === 'ROWS'
+      ? data.rows
+      : data.columns;
+  return sheetName + sheetDimension;
 }
 
 function getUrl() {
@@ -66,12 +72,13 @@ function getUrl() {
     '/values/' +
     enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
-    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json'
+    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS'
   );
 }
 
 function getData() {
   const mappedData = [];
+  const majorDimension = data.appendMajorDimension || data.updateMajorDimension;
 
   if (data.dataList) {
     data.dataList.forEach((d) => {
@@ -79,17 +86,19 @@ function getData() {
     });
   }
 
-  if (data.authFlow == 'stape') {
+  if (data.authFlow === 'stape') {
     return {
       spreadsheetId: spreadsheetId,
       range: enc(sheetRange),
       type: data.type === 'add' ? 'add' : 'edit',
-      values: [mappedData]
+      values: [mappedData],
+      majorDimension: majorDimension
     };
   }
 
   return {
-    values: [mappedData]
+    values: [mappedData],
+    majorDimension: majorDimension
   };
 }
 
@@ -189,7 +198,8 @@ function sendStoreRequest() {
 ==============================================================================*/
 
 function enc(data) {
-  return encodeUriComponent(data || '');
+  if (['null', 'undefined'].indexOf(getType(data)) !== -1) data = '';
+  return encodeUriComponent(makeString(data));
 }
 
 function isUIFieldTrue(field) {
