@@ -11,21 +11,19 @@ const makeString = require('makeString');
 /*==============================================================================
 ==============================================================================*/
 
-const traceId = getRequestHeader('trace-id');
-
 const useOptimisticScenario = isUIFieldTrue(data.useOptimisticScenario);
 
 const spreadsheetId = getSpreadsheetId(data);
 const sheetRange = getSheetRange(data);
-let method = data.type === 'add' ? 'POST' : 'PUT';
-const postBody = getData();
-const postUrl = getUrl();
+const postBody = getData(data);
+const postUrl = getUrl(data);
 
 if (data.authFlow === 'stape') {
-  method = 'POST';
-  sendStapeApiRequest();
+  const method = 'POST';
+  sendStapeApiRequest(postUrl, postBody, method);
 } else {
-  sendStoreRequest();
+  const method = data.type === 'add' ? 'POST' : 'PUT';
+  sendStoreRequest(postUrl, postBody, method);
 }
 
 if (useOptimisticScenario) {
@@ -41,12 +39,10 @@ function getSpreadsheetId(data) {
 }
 
 function getSheetRange(data) {
-  const sheetName = data.sheetName ? "'" + data.sheetName + "'!" : '';
-  const sheetDimension = data.majorDimension === 'ROWS' ? data.rows : data.columns;
-  return sheetName + sheetDimension;
+  return data.sheetName ? "'" + data.sheetName + "'!" + data.rows : data.rows;
 }
 
-function getUrl() {
+function getUrl(data) {
   if (data.authFlow == 'stape') {
     const containerIdentifier = getRequestHeader('x-gtm-identifier');
     const defaultDomain = getRequestHeader('x-gtm-default-domain');
@@ -63,6 +59,8 @@ function getUrl() {
     );
   }
 
+  const forceNewRow =
+    data.type === 'add' && data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '';
   return (
     'https://content-sheets.googleapis.com/v4/spreadsheets/' +
     spreadsheetId +
@@ -70,11 +68,11 @@ function getUrl() {
     enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
     '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
-    (data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '')
+    forceNewRow
   );
 }
 
-function getData() {
+function getData(data) {
   const mappedData = [];
 
   if (data.dataList) {
@@ -84,13 +82,14 @@ function getData() {
   }
 
   if (data.authFlow === 'stape') {
+    const forceNewRow = data.type === 'add' && data.insertDataOption ? 'INSERT_ROWS' : undefined;
     return {
       spreadsheetId: spreadsheetId,
       range: enc(sheetRange),
       type: data.type === 'add' ? 'add' : 'edit',
       values: [mappedData],
       majorDimension: data.majorDimension,
-      insertDataOption: data.insertDataOption ? 'INSERT_ROWS' : undefined
+      insertDataOption: forceNewRow
     };
   }
 
@@ -100,11 +99,10 @@ function getData() {
   };
 }
 
-function sendStapeApiRequest() {
+function sendStapeApiRequest(postUrl, postBody, method) {
   log({
     Name: 'Spreadsheet',
     Type: 'Request',
-    TraceId: traceId,
     EventName: data.type,
     RequestMethod: method,
     RequestUrl: postUrl,
@@ -117,7 +115,6 @@ function sendStapeApiRequest() {
       log({
         Name: 'Spreadsheet',
         Type: 'Response',
-        TraceId: traceId,
         EventName: data.type,
         ResponseStatusCode: statusCode,
         ResponseHeaders: headers,
@@ -138,11 +135,10 @@ function sendStapeApiRequest() {
   );
 }
 
-function sendStoreRequest() {
+function sendStoreRequest(postUrl, postBody, method) {
   log({
     Name: 'Spreadsheet',
     Type: 'Request',
-    TraceId: traceId,
     EventName: data.type,
     RequestMethod: method,
     RequestUrl: postUrl,
@@ -162,7 +158,6 @@ function sendStoreRequest() {
       log({
         Name: 'Spreadsheet',
         Type: 'Response',
-        TraceId: traceId,
         EventName: data.type,
         ResponseStatusCode: result.statusCode,
         ResponseHeaders: result.headers,
@@ -181,7 +176,6 @@ function sendStoreRequest() {
       log({
         Name: 'Spreadsheet',
         Type: 'Message',
-        TraceId: traceId,
         EventName: data.type,
         Message: 'The request failed or timed out.',
         Reason: JSON.stringify(result)
@@ -205,6 +199,7 @@ function isUIFieldTrue(field) {
 }
 
 function log(rawDataToLog) {
+  rawDataToLog.TraceId = getRequestHeader('trace-id');
   if (determinateIsLoggingEnabled()) logConsole(rawDataToLog);
 }
 
