@@ -47,66 +47,36 @@ ___TEMPLATE_PARAMETERS___
           {
             "value": "add",
             "displayValue": "Append data",
-            "subParams": [
-              {
-                "type": "RADIO",
-                "name": "appendMajorDimension",
-                "displayName": "",
-                "radioItems": [
-                  {
-                    "value": "ROWS",
-                    "displayValue": "Row"
-                  },
-                  {
-                    "value": "COLUMNS",
-                    "displayValue": "Column"
-                  }
-                ],
-                "simpleValueType": true,
-                "enablingConditions": [
-                  {
-                    "paramName": "type",
-                    "paramValue": "add",
-                    "type": "EQUALS"
-                  }
-                ],
-                "defaultValue": "ROWS"
-              }
-            ]
+            "subParams": []
           },
           {
             "value": "update",
-            "subParams": [
-              {
-                "type": "RADIO",
-                "name": "updateMajorDimension",
-                "displayName": "",
-                "radioItems": [
-                  {
-                    "value": "ROWS",
-                    "displayValue": "Row"
-                  },
-                  {
-                    "value": "COLUMNS",
-                    "displayValue": "Column"
-                  }
-                ],
-                "simpleValueType": true,
-                "enablingConditions": [
-                  {
-                    "paramName": "type",
-                    "paramValue": "update",
-                    "type": "EQUALS"
-                  }
-                ],
-                "defaultValue": "ROWS"
-              }
-            ],
-            "displayValue": "Update cells"
+            "subParams": [],
+            "displayValue": "Update data"
           }
         ],
         "simpleValueType": true,
         "defaultValue": "add"
+      },
+      {
+        "type": "RADIO",
+        "name": "majorDimension",
+        "displayName": "Dimension",
+        "radioItems": [
+          {
+            "value": "ROWS",
+            "displayValue": "Row",
+            "subParams": []
+          },
+          {
+            "value": "COLUMNS",
+            "subParams": [],
+            "displayValue": "Column"
+          }
+        ],
+        "simpleValueType": true,
+        "defaultValue": "ROWS",
+        "help": "This parameter let\u0027s you choose whether to insert the values in a \u003cb\u003erow\u003c/b\u003e or \u003cb\u003ecolumn\u003c/b\u003e."
       },
       {
         "type": "TEXT",
@@ -130,14 +100,9 @@ ___TEMPLATE_PARAMETERS___
         ],
         "enablingConditions": [
           {
-            "paramName": "appendMajorDimension",
-            "paramValue": "ROWS",
-            "type": "EQUALS"
-          },
-          {
-            "paramName": "updateMajorDimension",
-            "paramValue": "ROWS",
-            "type": "EQUALS"
+            "paramName": "majorDimension",
+            "paramValue": "COLUMNS",
+            "type": "NOT_EQUALS"
           }
         ]
       },
@@ -155,12 +120,7 @@ ___TEMPLATE_PARAMETERS___
         ],
         "enablingConditions": [
           {
-            "paramName": "appendMajorDimension",
-            "paramValue": "COLUMNS",
-            "type": "EQUALS"
-          },
-          {
-            "paramName": "updateMajorDimension",
+            "paramName": "majorDimension",
             "paramValue": "COLUMNS",
             "type": "EQUALS"
           }
@@ -177,6 +137,14 @@ ___TEMPLATE_PARAMETERS___
           }
         ],
         "valueHint": "https://docs.google.com/spreadsheets/d/111112222222233333333qqqqqqqq/edit?"
+      },
+      {
+        "type": "CHECKBOX",
+        "name": "insertDataOption",
+        "checkboxText": "Force new rows",
+        "simpleValueType": true,
+        "help": "This forces the spreadsheet to create a new row when appending values. It solves a problem of cells being overwritten in a scenario where multiple requests are sent in a short time frame (when ranges overlap).",
+        "defaultValue": false
       },
       {
         "type": "SELECT",
@@ -325,10 +293,7 @@ function getSpreadsheetId(data) {
 
 function getSheetRange(data) {
   const sheetName = data.sheetName ? "'" + data.sheetName + "'!" : '';
-  const sheetDimension =
-    data.appendMajorDimension === 'ROWS' || data.updateMajorDimension === 'ROWS'
-      ? data.rows
-      : data.columns;
+  const sheetDimension = data.majorDimension === 'ROWS' ? data.rows : data.columns;
   return sheetName + sheetDimension;
 }
 
@@ -355,13 +320,13 @@ function getUrl() {
     '/values/' +
     enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
-    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS'
+    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
+    (data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '')
   );
 }
 
 function getData() {
   const mappedData = [];
-  const majorDimension = data.appendMajorDimension || data.updateMajorDimension;
 
   if (data.dataList) {
     data.dataList.forEach((d) => {
@@ -375,13 +340,14 @@ function getData() {
       range: enc(sheetRange),
       type: data.type === 'add' ? 'add' : 'edit',
       values: [mappedData],
-      majorDimension: majorDimension
+      majorDimension: data.majorDimension,
+      insertDataOption: data.insertDataOption ? 'INSERT_ROWS' : undefined
     };
   }
 
   return {
     values: [mappedData],
-    majorDimension: majorDimension
+    majorDimension: data.majorDimension
   };
 }
 
@@ -774,7 +740,18 @@ scenarios:
 
     assertApi('gtmOnSuccess').wasCalled();
     assertApi('gtmOnFailure').wasNotCalled();
-- name: '[Stape Google Connection] Add Row request is built and sent successfully'
+- name: '[Stape Google Connection] Add Row - insertDataOption query succesfully sent
+    on body'
+  code: "setMockDataByActionType('addRow',{\n  insertDataOption: true\n});\n\nmock('sendHttpRequest',\
+    \ (requestUrl, callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
+    \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, method: 'POST' });\n  \n  const parsedBody = JSON.parse(requestBody);\n \
+    \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+    \    range: \"'Sheet2'!D1\",\n    type: 'add',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
+    \ 'buuuuuuuuuuuuuu']],\n    majorDimension: 'ROWS',\n    insertDataOption: 'INSERT_ROWS'\n\
+    \  });\n  \n  assertThat(callback).isFunction();\n  callback(200);\n});\n\nrunCode(mockData);\n\
+    \nassertApi('gtmOnSuccess').wasCalled();\nassertApi('gtmOnFailure').wasNotCalled();"
+- name: '[Stape Google Connection] Add Row - request is built and sent successfully'
   code: "setMockDataByActionType('addRow');\n\nmock('sendHttpRequest', (requestUrl,\
     \ callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
     \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
@@ -784,7 +761,17 @@ scenarios:
     \ 'buuuuuuuuuuuuuu']],\n    majorDimension: 'ROWS'\n  });\n  \n  assertThat(callback).isFunction();\n\
     \  callback(200);\n});\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\n\
     assertApi('gtmOnFailure').wasNotCalled();"
-- name: '[Stape Google Connection] Update Cells request is built and sent successfully'
+- name: '[Stape Google Connection] Add Column - request is built and sent successfully'
+  code: "setMockDataByActionType('addColumn');\n\nmock('sendHttpRequest', (requestUrl,\
+    \ callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
+    \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, method: 'POST' });\n  \n  const parsedBody = JSON.parse(requestBody);\n \
+    \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+    \    range: \"'Sheet2'!C1\",\n    type: 'add',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
+    \ 'buuuuuuuuuuuuuu']],\n    majorDimension: 'COLUMNS'\n  });\n  \n  assertThat(callback).isFunction();\n\
+    \  callback(200);\n});\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\n\
+    assertApi('gtmOnFailure').wasNotCalled();"
+- name: '[Stape Google Connection] Update Row - request is built and sent successfully'
   code: "setMockDataByActionType('updateRow');\n\nmock('sendHttpRequest', (requestUrl,\
     \ callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
     \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
@@ -792,6 +779,16 @@ scenarios:
     \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
     \    range: \"'Sheet2'!D1\",\n    type: 'edit',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
     \ 'buuuuuuuuuuuuuu']],\n    majorDimension:'ROWS'\n  });\n  \n  assertThat(callback).isFunction();\n\
+    \  callback(200);\n});\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\n\
+    assertApi('gtmOnFailure').wasNotCalled();"
+- name: '[Stape Google Connection] Update Column - request is built and sent successfully'
+  code: "setMockDataByActionType('updateColumn');\n\nmock('sendHttpRequest', (requestUrl,\
+    \ callback, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo('https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v1/spreadsheet/auth-proxy');\n\
+    \  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, method: 'POST' });\n  \n  const parsedBody = JSON.parse(requestBody);\n \
+    \ assertThat(parsedBody).isEqualTo({\n    spreadsheetId: '1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+    \    range: \"'Sheet2'!C1\",\n    type: 'edit',\n    values: [['wwwwwwwwww', 'rrrrrrrr',\
+    \ 'buuuuuuuuuuuuuu']],\n    majorDimension:'COLUMNS'\n  });\n  \n  assertThat(callback).isFunction();\n\
     \  callback(200);\n});\n\nrunCode(mockData);\n\nassertApi('gtmOnSuccess').wasCalled();\n\
     assertApi('gtmOnFailure').wasNotCalled();"
 - name: '[Stape Google Connection] gtmOnFailure is called if request fails (statusCode)'
@@ -806,10 +803,11 @@ scenarios:
 
     assertApi('gtmOnSuccess').wasNotCalled();
     assertApi('gtmOnFailure').wasCalled();
-- name: '[Own Google Credentials] Add Row request is built and sent successfully'
-  code: "setMockDataByActionType('addRow', {\n  authFlow: 'own'\n});\n\nmock('sendHttpRequest',\
-    \ (requestUrl, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"\
-    https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS\"\
+- name: '[Own Google Credentials] Add Row - insertDataOption query succesfully sent
+    on URL'
+  code: "setMockDataByActionType('addRow', {\n  authFlow: 'own',\n  insertDataOption:\
+    \ true\n});\n\nmock('sendHttpRequest', (requestUrl, requestOptions, requestBody)\
+    \ => {\n  assertThat(requestUrl).isEqualTo(\"https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS\"\
     );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
     \ }, authorization: 'mockedGoogleAuth', method: 'POST' });\n  \n  const parsedBody\
     \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ \n    values:\
@@ -818,10 +816,34 @@ scenarios:
     \ 200 }));\n});\n\nrunCode(mockData);\n\ncallLater(() => {\n  assertApi('getGoogleAuth').wasCalledWith({\n\
     \    scopes: ['https://www.googleapis.com/auth/spreadsheets']\n  });\n  assertApi('gtmOnSuccess').wasCalled();\n\
     \  assertApi('gtmOnFailure').wasNotCalled();\n});"
-- name: '[Own Google Credentials] Update Cells request is built and sent successfully'
-  code: "setMockDataByActionType('updateRow', {\n  authFlow: 'own'\n});\n\nmockData.updateMajorDimension\
-    \ = 'ROWS';\n\nmock('sendHttpRequest', (requestUrl, requestOptions, requestBody)\
-    \ => {\n  assertThat(requestUrl).isEqualTo(\"https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS\"\
+- name: '[Own Google Credentials] Add Row request is built and sent successfully'
+  code: "setMockDataByActionType('addRow', {\n  authFlow: 'own'\n});\n\nmock('sendHttpRequest',\
+    \ (requestUrl, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"\
+    https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json\"\
+    );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, authorization: 'mockedGoogleAuth', method: 'POST' });\n  \n  const parsedBody\
+    \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ \n    values:\
+    \ [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],\n    majorDimension: 'ROWS'\n\
+    \  });\n  \n  return Promise.create((resolve, reject) => resolve({ statusCode:\
+    \ 200 }));\n});\n\nrunCode(mockData);\n\ncallLater(() => {\n  assertApi('getGoogleAuth').wasCalledWith({\n\
+    \    scopes: ['https://www.googleapis.com/auth/spreadsheets']\n  });\n  assertApi('gtmOnSuccess').wasCalled();\n\
+    \  assertApi('gtmOnFailure').wasNotCalled();\n});"
+- name: '[Own Google Credentials] Add Column request is built and sent successfully'
+  code: "setMockDataByActionType('addColumn', {\n  authFlow: 'own',\n  insertDataOption:\
+    \ true,\n});\n\nmock('sendHttpRequest', (requestUrl, requestOptions, requestBody)\
+    \ => {\n  assertThat(requestUrl).isEqualTo(\"https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!C1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS\"\
+    );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
+    \ }, authorization: 'mockedGoogleAuth', method: 'POST' });\n  \n  const parsedBody\
+    \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ \n    values:\
+    \ [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],\n    majorDimension: 'COLUMNS'\n\
+    \  });\n  \n  return Promise.create((resolve, reject) => resolve({ statusCode:\
+    \ 200 }));\n});\n\nrunCode(mockData);\n\ncallLater(() => {\n  assertApi('getGoogleAuth').wasCalledWith({\n\
+    \    scopes: ['https://www.googleapis.com/auth/spreadsheets']\n  });\n  assertApi('gtmOnSuccess').wasCalled();\n\
+    \  assertApi('gtmOnFailure').wasNotCalled();\n});"
+- name: '[Own Google Credentials] Update Row request is built and sent successfully'
+  code: "setMockDataByActionType('updateRow', {\n  authFlow: 'own',\n  majorDimension:\
+    \ 'ROWS',\n  insertDataOption: true\n});\n\nmock('sendHttpRequest', (requestUrl,\
+    \ requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS\"\
     );\n  \n  assertThat(requestOptions).isEqualTo({ headers: { 'Content-Type': 'application/json'\
     \ }, authorization: 'mockedGoogleAuth', method: 'PUT' });\n  \n  const parsedBody\
     \ = JSON.parse(requestBody);\n  assertThat(parsedBody).isEqualTo({ \n    values:\
@@ -930,23 +952,24 @@ setup: "const Promise = require('Promise');\nconst JSON = require('JSON');\ncons
   \  for (const key in source) {\n    if (source.hasOwnProperty(key)) target[key]\
   \ = source[key];\n  }\n  return target;\n};\n\nconst requiredConsoleKeys = ['Type',\
   \ 'TraceId', 'Name'];\n\nconst mockData = {};\n\nconst setMockDataByActionType =\
-  \ (actionType, objToBeMerged) => {\n  const baseMockData = {\n    useOptimisticScenario:\
-  \ false,\n    logType: 'debug'\n  };\n  \n  const actionTypes = {\n    addRow: {\n\
-  \      type: 'add',\n      sheetName: 'Sheet2',\n      appendMajorDimension : 'ROWS',\n\
-  \      rows: 'D1',\n      columns: 'C1',\n      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+  \ (actionType, objToBeMerged) => {\n  const baseMockData = {\n    insertDataOption:\
+  \ undefined,\n    useOptimisticScenario: false,\n    logType: 'debug'\n  };\n  \n\
+  \  const actionTypes = {\n    addRow: {\n      type: 'add',\n      sheetName: 'Sheet2',\n\
+  \      majorDimension : 'ROWS',\n      rows: 'D1',\n      columns: 'C1',\n     \
+  \ url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
   \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
   \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
   \    },\n    addColumn: {\n      type: 'add',\n      sheetName: 'Sheet2',\n    \
-  \  appendMajorDimension : 'COLUMNS',\n      rows: 'D1',\n      columns: 'C1',\n\
-  \      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+  \  majorDimension : 'COLUMNS',\n      rows: 'D1',\n      columns: 'C1',\n      url:\
+  \ 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
   \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
   \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
   \    },\n    updateColumn : {\n      type: 'update',\n      sheetName: 'Sheet2',\n\
-  \      updateMajorDimension : 'COLUMNS',\n      rows: 'D1',\n      columns: 'C1',\n\
-  \      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
+  \      majorDimension : 'COLUMNS',\n      rows: 'D1',\n      columns: 'C1',\n  \
+  \    url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
   \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
   \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
-  \    },\n    updateRow: {\n      type: 'update',\n      updateMajorDimension: 'ROWS',\n\
+  \    },\n    updateRow: {\n      type: 'update',\n      majorDimension: 'ROWS',\n\
   \      sheetName: 'Sheet2',\n      rows: 'D1',\n      columns: 'C1',\n      url:\
   \ 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
   \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\

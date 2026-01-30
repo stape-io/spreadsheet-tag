@@ -42,10 +42,7 @@ function getSpreadsheetId(data) {
 
 function getSheetRange(data) {
   const sheetName = data.sheetName ? "'" + data.sheetName + "'!" : '';
-  const sheetDimension =
-    data.appendMajorDimension === 'ROWS' || data.updateMajorDimension === 'ROWS'
-      ? data.rows
-      : data.columns;
+  const sheetDimension = data.majorDimension === 'ROWS' ? data.rows : data.columns;
   return sheetName + sheetDimension;
 }
 
@@ -72,13 +69,13 @@ function getUrl() {
     '/values/' +
     enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
-    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS'
+    '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
+    (data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '')
   );
 }
 
 function getData() {
   const mappedData = [];
-  const majorDimension = data.appendMajorDimension || data.updateMajorDimension;
 
   if (data.dataList) {
     data.dataList.forEach((d) => {
@@ -92,13 +89,14 @@ function getData() {
       range: enc(sheetRange),
       type: data.type === 'add' ? 'add' : 'edit',
       values: [mappedData],
-      majorDimension: majorDimension
+      majorDimension: data.majorDimension,
+      insertDataOption: data.insertDataOption ? 'INSERT_ROWS' : undefined
     };
   }
 
   return {
     values: [mappedData],
-    majorDimension: majorDimension
+    majorDimension: data.majorDimension
   };
 }
 
