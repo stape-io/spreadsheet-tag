@@ -1,0 +1,515 @@
+setup: |-
+  const Promise = require('Promise');
+  const JSON = require('JSON');
+  const makeInteger = require('makeInteger');
+  const Object = require('Object');
+  const callLater = require('callLater');
+  const logToConsole = require('logToConsole');
+
+  const mergeObj = (target, source) => {
+    for (const key in source) {
+      if (source.hasOwnProperty(key)) target[key] = source[key];
+    }
+    return target;
+  };
+
+  const requiredConsoleKeys = ['Type', 'TraceId', 'Name'];
+
+  const mockData = {};
+
+  const setMockDataByActionType = (actionType, objToBeMerged) => {
+    const baseMockData = {
+      insertDataOption: undefined,
+      useOptimisticScenario: false,
+      logType: 'debug'
+    };
+
+    const actionTypes = {
+      addRow: {
+        type: 'add',
+        sheetName: 'Sheet2',
+        majorDimension: 'ROWS',
+        rows: 'D1',
+        url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',
+        authFlow: 'stape',
+        dataList: [
+          { value: 'wwwwwwwwww' },
+          { value: 'rrrrrrrr' },
+          { value: 'buuuuuuuuuuuuuu' }
+        ]
+      },
+      addColumn: {
+        type: 'add',
+        sheetName: 'Sheet2',
+        majorDimension: 'COLUMNS',
+        rows: 'D1',
+        url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',
+        authFlow: 'stape',
+        dataList: [
+          { value: 'wwwwwwwwww' },
+          { value: 'rrrrrrrr' },
+          { value: 'buuuuuuuuuuuuuu' }
+        ]
+      },
+      updateColumn: {
+        type: 'update',
+        sheetName: 'Sheet2',
+        majorDimension: 'COLUMNS',
+        rows: 'D1',
+        url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',
+        authFlow: 'stape',
+        dataList: [
+          { value: 'wwwwwwwwww' },
+          { value: 'rrrrrrrr' },
+          { value: 'buuuuuuuuuuuuuu' }
+        ]
+      },
+      updateRow: {
+        type: 'update',
+        majorDimension: 'ROWS',
+        sheetName: 'Sheet2',
+        rows: 'D1',
+        url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',
+        authFlow: 'stape',
+        dataList: [
+          { value: 'wwwwwwwwww' },
+          { value: 'rrrrrrrr' },
+          { value: 'buuuuuuuuuuuuuu' }
+        ]
+      }
+    };
+
+    return mergeObj(
+      mockData,
+      mergeObj(actionTypes[actionType], mergeObj(baseMockData, objToBeMerged || {}))
+    );
+  };
+
+  mock('sendHttpRequest', (requestUrl, options, requestBody) => {
+    requestBody = {};
+    return Promise.create((resolve, reject) => {
+      resolve({ statusCode: 200 });
+    });
+  });
+
+  mock('getRequestHeader', (header) => {
+    if (header === 'trace-id') return 'expectedTraceId';
+    else if (header === 'x-gtm-identifier') return 'expectedXGtmIdentifier';
+    else if (header === 'x-gtm-default-domain') return 'expectedXGtmDefaultDomain';
+    else if (header === 'x-gtm-api-key') return 'expectedXGtmApiKey';
+  });
+
+  mock('getGoogleAuth', () => {
+    return 'mockedGoogleAuth';
+  });
+scenarios:
+  - name: Sheet Range without Sheet Name is built successfully
+    code: |-
+      setMockDataByActionType('addRow');
+      Object.delete(mockData, 'sheetName');
+
+      const expectedSheetRange = mockData.rows;
+      const expectedSheetValues = [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']];
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        const urlRange = requestUrl.split('values/')[1].split('?')[0].replace(':append', '');
+        const parsedBody = JSON.parse(requestBody);
+
+        assertThat(parsedBody.values).isEqualTo(expectedSheetValues);
+        assertThat(urlRange).isEqualTo(expectedSheetRange);
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: Sheet Range with Sheet Name is built successfully
+    code: |-
+      setMockDataByActionType('addRow');
+
+      const expectedSheetRange = "'" + mockData.sheetName + "'!" + mockData.rows;
+      const expectedSheetValues = [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']];
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        const urlRange = requestUrl.split('values/')[1].split('?')[0].replace(':append', '');
+        const parsedBody = JSON.parse(requestBody);
+
+        assertThat(parsedBody.values).isEqualTo(expectedSheetValues);
+        assertThat(urlRange).isEqualTo(expectedSheetRange);
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] Add Row - insertDataOption query succesfully sent on body'
+    code: |-
+      setMockDataByActionType('addRow', {
+        insertDataOption: true
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v2/spreadsheet?originalPath=/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] Add Row - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('addRow');
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v2/spreadsheet?originalPath=/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] Add Column - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('addColumn');
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v2/spreadsheet?originalPath=/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'COLUMNS'
+        });
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] Update Row - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('updateRow');
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v2/spreadsheet?originalPath=/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          method: 'PUT'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] Update Column - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('updateColumn');
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://expectedXGtmIdentifier.expectedXGtmDefaultDomain/stape-api/expectedXGtmApiKey/v2/spreadsheet?originalPath=/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          method: 'PUT'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'COLUMNS'
+        });
+
+        return Promise.create((resolve) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Stape Google Connection] gtmOnFailure is called if request fails (statusCode)'
+    code: |-
+      setMockDataByActionType('addRow');
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        return Promise.create((resolve) => resolve({ statusCode: 500 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasNotCalled();
+        assertApi('gtmOnFailure').wasCalled();
+      });
+
+  - name: '[Own Google Credentials] Add Row - insertDataOption query succesfully sent on URL'
+    code: |-
+      setMockDataByActionType('addRow', {
+        authFlow: 'own',
+        insertDataOption: true
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          authorization: 'mockedGoogleAuth',
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve, reject) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('getGoogleAuth').wasCalledWith({
+          scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Own Google Credentials] Add Row - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('addRow', {
+        authFlow: 'own'
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          authorization: 'mockedGoogleAuth',
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve, reject) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('getGoogleAuth').wasCalledWith({
+          scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Own Google Credentials] Add Column - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('addColumn', {
+        authFlow: 'own',
+        insertDataOption: true
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1:append?includeValuesInResponse=true&valueInputOption=RAW&alt=json&insertDataOption=INSERT_ROWS"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          authorization: 'mockedGoogleAuth',
+          method: 'POST'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'COLUMNS'
+        });
+
+        return Promise.create((resolve, reject) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('getGoogleAuth').wasCalledWith({
+          scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Own Google Credentials] Update Row - request is built and sent successfully'
+    code: |-
+      setMockDataByActionType('updateRow', {
+        authFlow: 'own',
+        majorDimension: 'ROWS'
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        assertThat(requestUrl).isEqualTo(
+          "https://content-sheets.googleapis.com/v4/spreadsheets/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8/values/'Sheet2'!D1?includeValuesInResponse=true&valueInputOption=RAW&alt=json"
+        );
+
+        assertThat(requestOptions).isEqualTo({
+          headers: { 'Content-Type': 'application/json' },
+          authorization: 'mockedGoogleAuth',
+          method: 'PUT'
+        });
+
+        const parsedBody = JSON.parse(requestBody);
+        assertThat(parsedBody).isEqualTo({
+          values: [['wwwwwwwwww', 'rrrrrrrr', 'buuuuuuuuuuuuuu']],
+          majorDimension: 'ROWS'
+        });
+
+        return Promise.create((resolve, reject) => resolve({ statusCode: 200 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('getGoogleAuth').wasCalledWith({
+          scopes: ['https://www.googleapis.com/auth/spreadsheets']
+        });
+        assertApi('gtmOnSuccess').wasCalled();
+        assertApi('gtmOnFailure').wasNotCalled();
+      });
+
+  - name: '[Own Google Credentials] gtmOnFailure is called if request fails (statusCode)'
+    code: |-
+      setMockDataByActionType('addRow', {
+        authFlow: 'own'
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        return Promise.create((resolve, reject) => resolve({ statusCode: 500 }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasNotCalled();
+        assertApi('gtmOnFailure').wasCalled();
+      });
+
+  - name: '[Own Google Credentials] gtmOnFailure is called if request fails (catch)'
+    code: |-
+      setMockDataByActionType('addRow', {
+        authFlow: 'own'
+      });
+
+      mock('sendHttpRequest', (requestUrl, requestOptions, requestBody) => {
+        return Promise.create((resolve, reject) => reject({ reason: 'failed' }));
+      });
+
+      runCode(mockData);
+
+      callLater(() => {
+        assertApi('gtmOnSuccess').wasNotCalled();
+        assertApi('gtmOnFailure').wasCalled();
+      });
+
+  - name: '[Early Return] - GTM appspot Domain'
+    code: |-
+      mock('getAllEventData', function () {
+        return {
+          page_location: 'https://gtm-msr.appspot.com/'
+        };
+      });
+
+      runCode(mockData);
+
+      assertApi('sendHttpRequest').wasNotCalled();
+      assertApi('gtmOnFailure').wasNotCalled();
+      assertApi('gtmOnSuccess').wasNotCalled();
