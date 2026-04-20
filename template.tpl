@@ -352,9 +352,9 @@ function getUrl(data) {
     data.type === 'add' && data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '';
   const sheetsPath =
     '/v4/spreadsheets/' +
-    spreadsheetId +
+    enc(spreadsheetId) +
     '/values/' +
-    sheetRange +
+    enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
     '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
     forceNewRow;
@@ -924,7 +924,7 @@ scenarios:
       assertApi('gtmOnSuccess').wasCalled();
       assertApi('gtmOnFailure').wasNotCalled();
     });
-- name: '[Stape Google Connection] Add Row - insertDataOption query succesfully sent
+- name: '[Stape Google Connection] Add Row - insertDataOption query successfully sent
     on body'
   code: "setMockDataByActionType('addRow', {\n  insertDataOption: true\n});\n\nmock('sendHttpRequest',\
     \ (requestUrl, requestOptions, requestBody) => {\n  assertThat(requestUrl).isEqualTo(\"\
@@ -988,7 +988,7 @@ scenarios:
       assertApi('gtmOnSuccess').wasNotCalled();
       assertApi('gtmOnFailure').wasCalled();
     });
-- name: '[Own Google Credentials] Add Row - insertDataOption query succesfully sent
+- name: '[Own Google Credentials] Add Row - insertDataOption query successfully sent
     on URL'
   code: "setMockDataByActionType('addRow', {\n  authFlow: 'own',\n  insertDataOption:\
     \ true\n});\n\nmock('sendHttpRequest', (requestUrl, requestOptions, requestBody)\

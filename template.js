@@ -55,9 +55,9 @@ function getUrl(data) {
     data.type === 'add' && data.insertDataOption ? '&insertDataOption=INSERT_ROWS' : '';
   const sheetsPath =
     '/v4/spreadsheets/' +
-    spreadsheetId +
+    enc(spreadsheetId) +
     '/values/' +
-    sheetRange +
+    enc(sheetRange) +
     (data.type === 'add' ? ':append' : '') +
     '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
     forceNewRow;
