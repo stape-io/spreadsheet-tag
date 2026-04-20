@@ -85,6 +85,10 @@ setup: |-
     );
   };
 
+  mock('getAllEventData', () => {
+    return {page_location: 'https://www.sheets.test.com/'};
+  });
+
   mock('sendHttpRequest', (requestUrl, options, requestBody) => {
     requestBody = {};
     return Promise.create((resolve, reject) => {

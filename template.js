@@ -1,8 +1,10 @@
+const BigQuery = require('BigQuery');
 const encodeUriComponent = require('encodeUriComponent');
 const getAllEventData = require('getAllEventData');
 const getContainerVersion = require('getContainerVersion');
 const getGoogleAuth = require('getGoogleAuth');
 const getRequestHeader = require('getRequestHeader');
+const getTimestampMillis = require('getTimestampMillis');
 const getType = require('getType');
 const JSON = require('JSON');
 const logToConsole = require('logToConsole');
@@ -77,7 +79,7 @@ function getUrl(data) {
     );
   }
 
-  return 'https://content-sheets.googleapis.com' + sheetsPath;
+  return 'https://content-sheets.googleapis.com' + enc(sheetsPath);
 }
 
 function getData(data) {

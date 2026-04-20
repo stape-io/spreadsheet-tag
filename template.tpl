@@ -195,7 +195,7 @@ ___TEMPLATE_PARAMETERS___
       }
     ]
   },
- {
+  {
     "displayName": "Logs Settings",
     "name": "logsGroup",
     "groupStyle": "ZIPPY_CLOSED",
@@ -295,11 +295,13 @@ ___TEMPLATE_PARAMETERS___
 
 ___SANDBOXED_JS_FOR_SERVER___
 
+const BigQuery = require('BigQuery');
 const encodeUriComponent = require('encodeUriComponent');
 const getAllEventData = require('getAllEventData');
 const getContainerVersion = require('getContainerVersion');
 const getGoogleAuth = require('getGoogleAuth');
 const getRequestHeader = require('getRequestHeader');
+const getTimestampMillis = require('getTimestampMillis');
 const getType = require('getType');
 const JSON = require('JSON');
 const logToConsole = require('logToConsole');
@@ -370,11 +372,11 @@ function getUrl(data) {
       '/stape-api/' +
       enc(containerApiKey) +
       '/v2/spreadsheet?originalPath=' +
-      sheetsPath
+      enc(sheetsPath)
     );
   }
 
-  return 'https://content-sheets.googleapis.com' + sheetsPath;
+  return 'https://content-sheets.googleapis.com' + enc(sheetsPath);
 }
 
 function getData(data) {
@@ -496,12 +498,61 @@ function isUIFieldTrue(field) {
 }
 
 function log(rawDataToLog) {
+  const logDestinationsHandlers = {};
+  if (determinateIsLoggingEnabled()) logDestinationsHandlers.console = logConsole;
+  if (determinateIsLoggingEnabledForBigQuery()) logDestinationsHandlers.bigQuery = logToBigQuery;
+
   rawDataToLog.TraceId = getRequestHeader('trace-id');
-  if (determinateIsLoggingEnabled()) logConsole(rawDataToLog);
+
+  const keyMappings = {
+    bigQuery: {
+      Name: 'tag_name',
+      Type: 'type',
+      TraceId: 'trace_id',
+      EventName: 'event_name',
+      RequestMethod: 'request_method',
+      RequestUrl: 'request_url',
+      RequestBody: 'request_body',
+      ResponseStatusCode: 'response_status_code',
+      ResponseHeaders: 'response_headers',
+      ResponseBody: 'response_body'
+    }
+  };
+
+  for (const logDestination in logDestinationsHandlers) {
+    const handler = logDestinationsHandlers[logDestination];
+    if (!handler) continue;
+
+    const mapping = keyMappings[logDestination];
+    const dataToLog = mapping ? {} : rawDataToLog;
+
+    if (mapping) {
+      for (const key in rawDataToLog) {
+        const mappedKey = mapping[key] || key;
+        dataToLog[mappedKey] = rawDataToLog[key];
+      }
+    }
+
+    handler(dataToLog);
+  }
 }
 
 function logConsole(dataToLog) {
   logToConsole(JSON.stringify(dataToLog));
+}
+
+function logToBigQuery(dataToLog) {
+  const connectionInfo = {
+    projectId: data.logBigQueryProjectId,
+    datasetId: data.logBigQueryDatasetId,
+    tableId: data.logBigQueryTableId
+  };
+  dataToLog.timestamp = getTimestampMillis();
+
+  ['request_body', 'response_headers', 'response_body'].forEach((p) => {
+    if (dataToLog[p]) dataToLog[p] = JSON.stringify(dataToLog[p]);
+  });
+  BigQuery.insert(connectionInfo, [dataToLog], { ignoreUnknownValues: true });
 }
 
 function determinateIsLoggingEnabled() {
@@ -511,21 +562,17 @@ function determinateIsLoggingEnabled() {
     (containerVersion.debugMode || containerVersion.previewMode)
   );
 
-  if (!data.logType) {
-    return isDebug;
-  }
-
-  if (data.logType === 'no') {
-    return false;
-  }
-
-  if (data.logType === 'debug') {
-    return isDebug;
-  }
+  if (!data.logType) return isDebug;
+  if (data.logType === 'no') return false;
+  if (data.logType === 'debug') return isDebug;
 
   return data.logType === 'always';
 }
 
+function determinateIsLoggingEnabledForBigQuery() {
+  if (data.bigQueryLogType === 'no') return false;
+  return data.bigQueryLogType === 'always';
+}
 
 
 ___SERVER_PERMISSIONS___
@@ -766,10 +813,83 @@ ___SERVER_PERMISSIONS___
       },
       "param": [
         {
+          "key": "keyPatterns",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 1,
+                "string": "page_location"
+              }
+            ]
+          }
+        },
+        {
           "key": "eventDataAccess",
           "value": {
             "type": 1,
-            "string": "any"
+            "string": "specific"
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "access_bigquery",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "allowedTables",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "projectId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "datasetId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "tableId"
+                  },
+                  {
+                    "type": 1,
+                    "string": "operation"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "*"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  }
+                ]
+              }
+            ]
           }
         }
       ]
@@ -982,8 +1102,8 @@ setup: "const Promise = require('Promise');\nconst JSON = require('JSON');\ncons
   };\n\nconst requiredConsoleKeys = ['Type', 'TraceId', 'Name'];\n\nconst mockData\
   \ = {};\n\nconst setMockDataByActionType = (actionType, objToBeMerged) => {\n  const\
   \ baseMockData = {\n    insertDataOption: undefined,\n    useOptimisticScenario:\
-  \ false,\n    logType: 'debug'\n  };\n  \n  const actionTypes = {\n    addRow: {\n\
-  \      type: 'add',\n      sheetName: 'Sheet2',\n      majorDimension : 'ROWS',\n\
+  \ false,\n    logType: 'debug'\n  };  \nconst actionTypes = {\n    addRow: {\n \
+  \     type: 'add',\n      sheetName: 'Sheet2',\n      majorDimension : 'ROWS',\n\
   \      rows: 'D1',\n      url: 'https://docs.google.com/spreadsheets/d/1AAbWfu1nrVUinb2kX111Gy599sBtue5wnaHFABW4BS8',\n\
   \      authFlow: 'stape',\n      dataList: [\n        { value: 'wwwwwwwwww' },\n\
   \        { value: 'rrrrrrrr' },\n        { value: 'buuuuuuuuuuuuuu' }\n      ]\n\
@@ -1006,8 +1126,9 @@ setup: "const Promise = require('Promise');\nconst JSON = require('JSON');\ncons
   \ (header) => {\n  if (header === 'trace-id') return 'expectedTraceId';\n  else\
   \ if (header === 'x-gtm-identifier') return 'expectedXGtmIdentifier';\n  else if\
   \ (header === 'x-gtm-default-domain') return 'expectedXGtmDefaultDomain';\n  else\
-  \ if (header === 'x-gtm-api-key') return 'expectedXGtmApiKey';\n});\n\nmock('getGoogleAuth',\
-  \ () => {\n  return 'mockedGoogleAuth';\n});"
+  \ if (header === 'x-gtm-api-key') return 'expectedXGtmApiKey';\n});\n\nmock('getAllEventData',\
+  \ () => {\n    return {page_location: 'https://www.sheets.test.com/'};\n});  \n\n\
+  mock('getGoogleAuth', () => {\n  return 'mockedGoogleAuth';\n});"
 
 
 ___NOTES___
