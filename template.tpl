@@ -813,22 +813,10 @@ ___SERVER_PERMISSIONS___
       },
       "param": [
         {
-          "key": "keyPatterns",
-          "value": {
-            "type": 2,
-            "listItem": [
-              {
-                "type": 1,
-                "string": "page_location"
-              }
-            ]
-          }
-        },
-        {
           "key": "eventDataAccess",
           "value": {
             "type": 1,
-            "string": "specific"
+            "string": "any"
           }
         }
       ]
