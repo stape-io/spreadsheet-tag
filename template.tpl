@@ -190,8 +190,36 @@ ___TEMPLATE_PARAMETERS___
         ],
         "type": "SIMPLE_TABLE",
         "newRowButtonText": "Add cell",
-        "help": "Each line here corresponds to a cell in the Sheet. Depending on the \u003cb\u003eDimension\u003c/b\u003e chosen, the cells will be treated a Column or as a Row.",
+        "help": "Each line here corresponds to a cell in the Sheet. Depending on the \u003cb\u003eDimension\u003c/b\u003e chosen, the cells will be treated as a Column or as a Row.",
         "displayName": "Data"
+      }
+    ]
+  },
+ {
+    "displayName": "Logs Settings",
+    "name": "logsGroup",
+    "groupStyle": "ZIPPY_CLOSED",
+    "type": "GROUP",
+    "subParams": [
+      {
+        "type": "RADIO",
+        "name": "logType",
+        "radioItems": [
+          {
+            "value": "no",
+            "displayValue": "Do not log"
+          },
+          {
+            "value": "debug",
+            "displayValue": "Log to console during debug and preview"
+          },
+          {
+            "value": "always",
+            "displayValue": "Always log to console"
+          }
+        ],
+        "simpleValueType": true,
+        "defaultValue": "debug"
       }
     ]
   },

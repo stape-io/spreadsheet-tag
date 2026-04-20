@@ -152,7 +152,7 @@ scenarios:
         assertApi('gtmOnFailure').wasNotCalled();
       });
 
-  - name: '[Stape Google Connection] Add Row - insertDataOption query succesfully sent on body'
+  - name: '[Stape Google Connection] Add Row - insertDataOption query successfully sent on URL'
     code: |-
       setMockDataByActionType('addRow', {
         insertDataOption: true
@@ -319,7 +319,7 @@ scenarios:
         assertApi('gtmOnFailure').wasCalled();
       });
 
-  - name: '[Own Google Credentials] Add Row - insertDataOption query succesfully sent on URL'
+  - name: '[Own Google Credentials] Add Row - insertDataOption query successfully sent on URL'
     code: |-
       setMockDataByActionType('addRow', {
         authFlow: 'own',
