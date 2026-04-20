@@ -20,7 +20,7 @@ if (shouldExitEarly(data, eventData)) return;
 const useOptimisticScenario = isUIFieldTrue(data.useOptimisticScenario);
 const spreadsheetId = getSpreadsheetId(data);
 const sheetRange = getSheetRange(data);
-const postBody = JSON.stringify(getData(data) || []);
+const postBody = getData(data) || {};
 const postUrl = getUrl(data);
 const method = data.type === 'add' ? 'POST' : 'PUT';
 let requestOptions = {
@@ -57,12 +57,12 @@ function getUrl(data) {
     '/v4/spreadsheets/' +
     spreadsheetId +
     '/values/' +
-    enc(sheetRange) +
+    sheetRange +
     (data.type === 'add' ? ':append' : '') +
     '?includeValuesInResponse=true&valueInputOption=RAW&alt=json' +
     forceNewRow;
 
-  if (data.authFlow == 'stape') {
+  if (data.authFlow === 'stape') {
     const containerIdentifier = getRequestHeader('x-gtm-identifier');
     const defaultDomain = getRequestHeader('x-gtm-default-domain');
     const containerApiKey = getRequestHeader('x-gtm-api-key');
@@ -75,11 +75,11 @@ function getUrl(data) {
       '/stape-api/' +
       enc(containerApiKey) +
       '/v2/spreadsheet?originalPath=' +
-      enc(sheetsPath)
+      sheetsPath
     );
   }
 
-  return 'https://content-sheets.googleapis.com' + enc(sheetsPath);
+  return 'https://content-sheets.googleapis.com' + sheetsPath;
 }
 
 function getData(data) {
@@ -104,7 +104,7 @@ function sendStapeApiRequest(postUrl, options, postBody) {
     RequestBody: postBody
   });
 
-  sendHttpRequest(postUrl, options, postBody)
+  sendHttpRequest(postUrl, options, JSON.stringify(postBody))
     .then((response) => {
       log({
         Name: 'Spreadsheet',
@@ -151,7 +151,7 @@ function sendGoogleSheetsRequest(postUrl, options, postBody) {
 
   options.authorization = auth;
 
-  sendHttpRequest(postUrl, options, postBody)
+  sendHttpRequest(postUrl, options, JSON.stringify(postBody))
     .then((result) => {
       log({
         Name: 'Spreadsheet',
