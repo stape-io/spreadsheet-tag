@@ -1,7 +1,7 @@
 homepage: 'https://stape.io/'
 documentation: 'https://github.com/stape-io/spreadsheet-tag'
 versions:
-  - sha: fcc41fb2e021e9d5264644b4d1e2410e9dce508c
+  - sha: 161674ecdb4eb7129289bb192112c7ce442fc3b0
     changeNotes: Added support to write data as columns and update tests.
   - sha: 9a2ed3fc583aa6351f6fe1e74553b82bfa3b9eb2
     changeNotes: Added Sheet Name field to UI. Added tests.
