@@ -1123,4 +1123,8 @@ ___NOTES___
 
 Created on 03/03/2022, 20:20:20
 
+2026-04-21 - Change Notes
+ - Added support to write data as columns.
+ - Minor code refactor. 
+ - Add and update tests.
 
