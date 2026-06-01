@@ -1,6 +1,8 @@
 homepage: 'https://stape.io/'
 documentation: 'https://github.com/stape-io/spreadsheet-tag'
 versions:
+  - sha: 4d77ca1c12cd35bf6730a9efadbadbbb29efa1c1
+    changeNotes: Logging removal.
   - sha: 326a4d52a54f49ad15329ba80fd8972e841025fc
     changeNotes: Added support to write data as columns and update tests.
   - sha: 9a2ed3fc583aa6351f6fe1e74553b82bfa3b9eb2

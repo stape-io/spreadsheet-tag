@@ -1,11 +1,9 @@
 const encodeUriComponent = require('encodeUriComponent');
 const getAllEventData = require('getAllEventData');
-const getContainerVersion = require('getContainerVersion');
 const getGoogleAuth = require('getGoogleAuth');
 const getRequestHeader = require('getRequestHeader');
 const getType = require('getType');
 const JSON = require('JSON');
-const logToConsole = require('logToConsole');
 const makeString = require('makeString');
 const sendHttpRequest = require('sendHttpRequest');
 
@@ -17,21 +15,8 @@ const eventData = getAllEventData();
 if (shouldExitEarly(data, eventData)) return;
 
 const useOptimisticScenario = isUIFieldTrue(data.useOptimisticScenario);
-const spreadsheetId = getSpreadsheetId(data);
-const sheetRange = getSheetRange(data);
-const postBody = getData(data) || {};
-const postUrl = getUrl(data);
-const method = data.type === 'add' ? 'POST' : 'PUT';
-let requestOptions = {
-  headers: { 'Content-Type': 'application/json' },
-  method: method
-};
 
-if (data.authFlow === 'stape') {
-  sendStapeApiRequest(postUrl, requestOptions, postBody);
-} else {
-  sendGoogleSheetsRequest(postUrl, requestOptions, postBody);
-}
+sendGoogleSheetsRequest();
 
 if (useOptimisticScenario) {
   return data.gtmOnSuccess();
@@ -50,6 +35,8 @@ function getSheetRange(data) {
 }
 
 function getUrl(data) {
+  const spreadsheetId = getSpreadsheetId(data);
+  const sheetRange = getSheetRange(data);
   const forceNewRow = data.type === 'add' && data.insertDataOption;
   const sheetsPath =
     '/v4/spreadsheets/' +
@@ -93,73 +80,23 @@ function getData(data) {
   };
 }
 
-function sendStapeApiRequest(postUrl, options, postBody) {
-  log({
-    Name: 'Spreadsheet',
-    Type: 'Request',
-    EventName: data.type,
-    RequestMethod: options.method,
-    RequestUrl: postUrl,
-    RequestBody: postBody
-  });
+function sendGoogleSheetsRequest() {
+  const postBody = getData(data) || {};
+  const postUrl = getUrl(data);
+  const requestOptions = {
+    headers: { 'Content-Type': 'application/json' },
+    method: data.type === 'add' ? 'POST' : 'PUT'
+  };
 
-  sendHttpRequest(postUrl, options, JSON.stringify(postBody))
-    .then((response) => {
-      log({
-        Name: 'Spreadsheet',
-        Type: 'Response',
-        EventName: data.type,
-        ResponseStatusCode: response.statusCode,
-        ResponseHeaders: response.headers,
-        ResponseBody: response.body,
-        method: method
-      });
-
-      if (!useOptimisticScenario) {
-        return response.statusCode >= 200 && response.statusCode < 400
-          ? data.gtmOnSuccess()
-          : data.gtmOnFailure();
-      }
-    })
-    .catch((error) => {
-      log({
-        Name: 'Spreadsheet',
-        Type: 'Message',
-        EventName: data.type,
-        Message: 'The request failed or timed out.',
-        Reason: JSON.stringify(error)
-      });
-
-      if (!useOptimisticScenario) return data.gtmOnFailure();
+  if (data.authFlow === 'own') {
+    const auth = getGoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/spreadsheets']
     });
-}
+    requestOptions.authorization = auth;
+  }
 
-function sendGoogleSheetsRequest(postUrl, options, postBody) {
-  log({
-    Name: 'Spreadsheet',
-    Type: 'Request',
-    EventName: data.type,
-    RequestMethod: options.method,
-    RequestUrl: postUrl,
-    RequestBody: postBody
-  });
-
-  const auth = getGoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
-  });
-  options.authorization = auth;
-
-  sendHttpRequest(postUrl, options, JSON.stringify(postBody))
+  sendHttpRequest(postUrl, requestOptions, JSON.stringify(postBody))
     .then((result) => {
-      log({
-        Name: 'Spreadsheet',
-        Type: 'Response',
-        EventName: data.type,
-        ResponseStatusCode: result.statusCode,
-        ResponseHeaders: result.headers,
-        ResponseBody: result.body
-      });
-
       if (!useOptimisticScenario) {
         return result.statusCode >= 200 && result.statusCode < 400
           ? data.gtmOnSuccess()
@@ -167,14 +104,6 @@ function sendGoogleSheetsRequest(postUrl, options, postBody) {
       }
     })
     .catch((result) => {
-      log({
-        Name: 'Spreadsheet',
-        Type: 'Message',
-        EventName: data.type,
-        Message: 'The request failed or timed out.',
-        Reason: JSON.stringify(result)
-      });
-
       if (!useOptimisticScenario) data.gtmOnFailure();
     });
 }
@@ -196,35 +125,4 @@ function enc(data) {
 
 function isUIFieldTrue(field) {
   return [true, 'true'].indexOf(field) !== -1;
-}
-
-function log(rawDataToLog) {
-  rawDataToLog.TraceId = getRequestHeader('trace-id');
-  if (determinateIsLoggingEnabled()) logConsole(rawDataToLog);
-}
-
-function logConsole(dataToLog) {
-  logToConsole(JSON.stringify(dataToLog));
-}
-
-function determinateIsLoggingEnabled() {
-  const containerVersion = getContainerVersion();
-  const isDebug = !!(
-    containerVersion &&
-    (containerVersion.debugMode || containerVersion.previewMode)
-  );
-
-  if (!data.logType) {
-    return isDebug;
-  }
-
-  if (data.logType === 'no') {
-    return false;
-  }
-
-  if (data.logType === 'debug') {
-    return isDebug;
-  }
-
-  return data.logType === 'always';
 }
